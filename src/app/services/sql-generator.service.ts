@@ -1,5 +1,9 @@
 import { Injectable } from '@angular/core';
-import { buildOracleDataType, sizeIsRequired } from '../models/oracle-type.util';
+import {
+  buildOracleDataType,
+  formatOracleDefaultValue,
+  sizeIsRequired
+} from '../models/oracle-type.util';
 import { ScriptFormData, TableColumn } from '../models/script-form.model';
 import { ScriptType } from '../models/script-types';
 
@@ -201,7 +205,7 @@ export class SqlGeneratorService {
     let alter = `ALTER TABLE ${SCHEMA}.${table} ADD ${column} ${dataType}`;
 
     if (form.defaultValue.trim()) {
-      alter += ` DEFAULT ${form.defaultValue.trim()}`;
+      alter += ` DEFAULT ${formatOracleDefaultValue(form.dataTypeBase, form.defaultValue)}`;
     }
     if (form.notNull) {
       alter += ' NOT NULL';
@@ -321,7 +325,7 @@ export class SqlGeneratorService {
 
   private buildCursorNotNull(form: ScriptFormData, table: string, column: string): string[] {
     const commands: string[] = [];
-    const defaultVal = form.cursorDefaultValue.trim();
+    const defaultVal = formatOracleDefaultValue(form.dataTypeBase, form.cursorDefaultValue);
     const whereClause = form.cursorWhereClause.trim()
       ? `WHERE ${form.cursorWhereClause.trim()}`
       : `WHERE ${column} IS NULL`;

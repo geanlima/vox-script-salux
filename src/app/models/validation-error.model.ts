@@ -8,4 +8,5 @@ export interface ValidationResult {
   errors: ValidationLogError[];
   success: boolean;
   message: string;
+  correctedText: string;
 }

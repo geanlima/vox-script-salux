@@ -69,4 +69,25 @@
       }
     </div>
   </section>
+
+  @if (hasCorrection()) {
+    <section class="card card--correction">
+      <div class="card__header">
+        <h2>Script Corrigido</h2>
+        <span class="card__hint">Correções automáticas de formatação e estrutura</span>
+      </div>
+      <div class="card__body">
+        <textarea
+          class="form-input form-textarea form-textarea--code script-input"
+          rows="16"
+          readonly
+          [ngModel]="correctedText()"
+        ></textarea>
+      </div>
+      <div class="card__footer">
+        <button type="button" class="btn btn--secondary" (click)="copyCorrection()">Copiar correção</button>
+        <button type="button" class="btn btn--primary" (click)="applyCorrection()">Aplicar correção</button>
+      </div>
+    </section>
+  }
 </div>

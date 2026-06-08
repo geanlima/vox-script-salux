@@ -10,48 +10,71 @@ export class SyntaxValidatorService {
     this.errors = [];
     this.currentText = rawText ?? '';
 
-    const text = this.currentText;
-    if (text.trim() === '') {
-      return this.buildResult();
+    try {
+      const text = this.currentText;
+      if (text.trim() === '') {
+        return this.buildResult(text);
+      }
+
+      if (!this.endsWithSlash(text)) {
+        this.logError(0, 'O arquivo deve terminar com /');
+      }
+
+      if (this.hasBlankLineAtEnd(text)) {
+        this.logError(0, 'Existe uma linha em branco no final no arquivo.');
+      }
+
+      const normalized = this.normalizeDoubleSpaces(text);
+      if (normalized === null) {
+        this.logError(0, 'Não foi possível normalizar espaços duplos no arquivo.');
+      }
+
+      const workingText = normalized ?? text;
+
+      if (this.validateSlashSeparators(workingText) < 0) {
+        this.logError(0, 'Quantidade excessiva de separadores / no arquivo.');
+      }
+
+      this.validateInfosaude(workingText);
+      this.validateTableSeqSynGrant(workingText);
+      this.validatePkFkCkc(workingText);
+    } catch {
+      this.logError(0, 'Erro ao processar o script. Verifique o conteúdo e tente novamente.');
     }
 
-    if (!this.endsWithSlash(text)) {
-      this.logError(0, 'O arquivo deve terminar com /');
-      return this.buildResult();
-    }
-
-    if (this.hasBlankLineAtEnd(text)) {
-      this.logError(0, 'Existe uma linha em branco no final no arquivo.');
-      return this.buildResult();
-    }
-
-    const normalized = this.normalizeDoubleSpaces(text);
-    if (normalized === null) {
-      this.logError(0, `erro.loop infinito wf_retira_espaco_duplo. Texto: ${text}`);
-      return this.buildResult();
-    }
-    const workingText = normalized;
-
-    if (this.validateSlashSeparators(workingText) < 0) {
-      this.logError(0, `erro.loop infinito wf_30. Texto: ${workingText}`);
-      return this.buildResult();
-    }
-
-    this.validateInfosaude(workingText);
-    this.validateTableSeqSynGrant(workingText);
-    this.validatePkFkCkc(workingText);
-
-    return this.buildResult();
+    const correctedText = this.correct(this.currentText);
+    return this.buildResult(correctedText);
   }
 
-  private buildResult(): ValidationResult {
+  correct(text: string): string {
+    if (!text.trim()) {
+      return text;
+    }
+
+    let result = text.replace(/\r\n/g, '\n');
+
+    let guard = 0;
+    while (result.includes('  ') && guard < 30) {
+      result = result.replace(/  /g, ' ');
+      guard++;
+    }
+
+    result = this.fixSlashSeparators(result);
+    result = this.fixInfosaudeInCommentOnTable(result);
+    result = this.ensureTrailingSlash(result);
+
+    return result;
+  }
+
+  private buildResult(correctedText: string): ValidationResult {
     const success = this.errors.length === 0;
     return {
       errors: [...this.errors],
       success,
       message: success
         ? 'Nenhuma inconsistência encontrada: TOP :o)'
-        : 'Inconsistência encontrada: :o('
+        : 'Inconsistência encontrada: :o(',
+      correctedText
     };
   }
 
@@ -153,7 +176,7 @@ export class SyntaxValidatorService {
 
       const snippet = text.substring(index, index + 200);
       if (!snippet.toLowerCase().includes('infosaude')) {
-        this.logError(index + 1, `Sem INFOSAUDE para ${snippet}`);
+        this.logError(index + 1, `Sem INFOSAUDE para ${snippet.trim()}`);
       }
 
       position = index + 1;
@@ -294,5 +317,64 @@ export class SyntaxValidatorService {
       name = name.substring(0, spaceIndex);
     }
     return name.trim();
+  }
+
+  private fixSlashSeparators(text: string): string {
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const fixedLines: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '/' || trimmed === '/ ' || trimmed === ' /' || trimmed === ' / ') {
+        fixedLines.push('/');
+        continue;
+      }
+
+      fixedLines.push(line.replace(/\s+\/$/, '/'));
+    }
+
+    const withoutBlankAroundSlash: string[] = [];
+    for (let i = 0; i < fixedLines.length; i++) {
+      const current = fixedLines[i].trim();
+      const previous = withoutBlankAroundSlash[withoutBlankAroundSlash.length - 1]?.trim() ?? '';
+
+      if (current === '' && previous === '/') {
+        continue;
+      }
+
+      if (current === '/' && fixedLines[i + 1]?.trim() === '') {
+        withoutBlankAroundSlash.push('/');
+        while (i + 1 < fixedLines.length && fixedLines[i + 1].trim() === '') {
+          i++;
+        }
+        continue;
+      }
+
+      if (current === '' && withoutBlankAroundSlash.length > 0 && withoutBlankAroundSlash[withoutBlankAroundSlash.length - 1].trim() === '') {
+        continue;
+      }
+
+      withoutBlankAroundSlash.push(fixedLines[i]);
+    }
+
+    return withoutBlankAroundSlash.join('\n');
+  }
+
+  private fixInfosaudeInCommentOnTable(text: string): string {
+    return text.replace(
+      /comment\s+on\s+table\s+(?!infosaude\.)(\w+)/gi,
+      (_match, tableName: string) => `COMMENT ON TABLE INFOSAUDE.${tableName.toUpperCase()}`
+    );
+  }
+
+  private ensureTrailingSlash(text: string): string {
+    let result = text.replace(/\r\n/g, '\n').trimEnd();
+    result = result.replace(/\n\s*\n\/\s*$/g, '\n/');
+
+    if (!result.endsWith('/')) {
+      result += '\n/';
+    }
+
+    return result;
   }
 }

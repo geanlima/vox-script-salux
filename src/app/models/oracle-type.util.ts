@@ -31,3 +31,30 @@ export function buildOracleDataType(baseType: string, size: string): string {
 
   return `${base}(${trimmedSize})`;
 }
+
+const STRING_ORACLE_TYPES: OracleBaseType[] = ['VARCHAR2', 'CHAR', 'CLOB'];
+
+export function isStringOracleType(baseType: string): boolean {
+  return STRING_ORACLE_TYPES.includes(baseType.trim().toUpperCase() as OracleBaseType);
+}
+
+export function formatOracleDefaultValue(baseType: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  if (!isStringOracleType(baseType)) {
+    return trimmed;
+  }
+
+  if (/^'.*'$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^[A-Z_][A-Z0-9_]*\s*\(/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `'${trimmed.replace(/'/g, "''")}'`;
+}
