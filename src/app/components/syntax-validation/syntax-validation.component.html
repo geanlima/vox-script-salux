@@ -2,7 +2,8 @@
   <div class="page-header">
     <h1>Validação de Sintaxe</h1>
     <p class="page-header__desc">
-      Validador de sintaxe para o Cadastros Gerais — cole seu script e clique em <strong>Avaliar</strong>.
+      Validador de sintaxe para o Cadastros Gerais — cole seu script e use <strong>Avaliar</strong> para regras do Cadastros Gerais
+      ou <strong>Pré-validar execução</strong> para simular a execução comando a comando.
     </p>
   </div>
 
@@ -33,8 +34,23 @@
     </div>
     <div class="card__footer">
       <button type="button" class="btn btn--secondary" (click)="clear()">Limpar</button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        [disabled]="isPrevalidating()"
+        (click)="prevalidateExecution()"
+      >
+        {{ isPrevalidating() ? 'Pré-validando...' : 'Pré-validar execução' }}
+      </button>
       <button type="button" class="btn btn--primary" (click)="evaluate()">Avaliar</button>
     </div>
+    <p class="card__footer-note">
+      @if (oracleAvailable()) {
+        Oracle conectado: a pré-validação usa <strong>DBMS_SQL.PARSE</strong> (sintaxe, sem alterar dados).
+      } @else {
+        Oracle não configurado: a pré-validação usa análise estática local. Configure <code>ORACLE_*</code> no servidor para validação real.
+      }
+    </p>
   </section>
 
   <section class="card card--errors">
@@ -69,6 +85,65 @@
       }
     </div>
   </section>
+
+  @if (preValidation()) {
+    <section class="card card--prevalidation">
+      <div class="card__header">
+        <h2>Pré-validação de Execução</h2>
+        <span
+          class="badge"
+          [class.badge--success]="preValidation()!.success"
+          [class.badge--error]="!preValidation()!.success"
+        >
+          {{ preValidation()!.mode === 'oracle' ? 'Oracle + estática' : 'Estática' }}
+        </span>
+      </div>
+      <div class="card__body">
+        <p class="prevalidation-message">{{ preValidation()!.message }}</p>
+
+        @if (preValidation()!.statements.length > 0) {
+          <div class="table-wrap">
+            <table class="error-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Linha</th>
+                  <th>Comando</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (statement of preValidation()!.statements; track statement.index) {
+                  <tr>
+                    <td>{{ statement.index }}</td>
+                    <td class="error-table__line">{{ statement.linha }}</td>
+                    <td>{{ statement.preview }}</td>
+                    <td>
+                      @if (statement.valid) {
+                        <span class="status-ok">OK</span>
+                      } @else {
+                        <span class="status-error">{{ statement.error }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        @if (preValidation()!.errors.length > 0) {
+          <ul class="prevalidation-errors">
+            @for (error of preValidation()!.errors; track $index) {
+              <li>
+                <strong>Linha {{ error.linha || '-' }}:</strong> {{ error.descricao }}
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </section>
+  }
 
   @if (hasCorrection()) {
     <section class="card card--correction">

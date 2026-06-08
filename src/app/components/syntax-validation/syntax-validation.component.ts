@@ -1,6 +1,11 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ValidationLogError } from '../../models/validation-error.model';
+import {
+  PreValidationResult,
+  ValidationLogError
+} from '../../models/validation-error.model';
+import { OracleExecutionService } from '../../services/oracle-execution.service';
+import { ScriptPrevalidatorService } from '../../services/script-prevalidator.service';
 import { SyntaxValidatorService } from '../../services/syntax-validator.service';
 
 @Component({
@@ -10,16 +15,29 @@ import { SyntaxValidatorService } from '../../services/syntax-validator.service'
   templateUrl: './syntax-validation.component.html',
   styleUrl: './syntax-validation.component.scss'
 })
-export class SyntaxValidationComponent {
+export class SyntaxValidationComponent implements OnInit {
   scriptText = signal('');
   correctedText = signal('');
   errors = signal<ValidationLogError[]>([]);
+  preValidation = signal<PreValidationResult | null>(null);
   statusMessage = signal('');
   showStatus = signal(false);
   isSuccess = signal(false);
   hasCorrection = signal(false);
+  oracleAvailable = signal(false);
+  isPrevalidating = signal(false);
 
-  constructor(private readonly validator: SyntaxValidatorService) {}
+  constructor(
+    private readonly validator: SyntaxValidatorService,
+    private readonly prevalidator: ScriptPrevalidatorService,
+    private readonly oracleExecution: OracleExecutionService
+  ) {}
+
+  ngOnInit(): void {
+    this.oracleExecution.checkAvailability().subscribe((available) => {
+      this.oracleAvailable.set(available);
+    });
+  }
 
   evaluate(): void {
     try {
@@ -34,6 +52,7 @@ export class SyntaxValidationComponent {
           result.correctedText !== this.scriptText()
       );
       this.showStatus.set(true);
+      this.preValidation.set(null);
     } catch {
       this.errors.set([
         {
@@ -47,7 +66,56 @@ export class SyntaxValidationComponent {
       this.correctedText.set('');
       this.hasCorrection.set(false);
       this.showStatus.set(true);
+      this.preValidation.set(null);
     }
+  }
+
+  prevalidateExecution(): void {
+    const script = this.scriptText();
+    this.isPrevalidating.set(true);
+    this.preValidation.set(null);
+
+    const staticResult = this.prevalidator.validate(script);
+
+    if (!this.oracleAvailable()) {
+      this.preValidation.set(staticResult);
+      this.isPrevalidating.set(false);
+      return;
+    }
+
+    this.oracleExecution.prevalidate(script).subscribe((oracleResult) => {
+      if (oracleResult.oracleAvailable === false) {
+        this.preValidation.set(staticResult);
+        this.isPrevalidating.set(false);
+        return;
+      }
+
+      const mergedErrors = [...staticResult.errors, ...oracleResult.errors];
+      const mergedStatements = oracleResult.statements.map((statement) => {
+        const staticStatement = staticResult.statements.find((item) => item.index === statement.index);
+        if (staticStatement && !staticStatement.valid) {
+          return {
+            ...statement,
+            valid: false,
+            error: staticStatement.error ?? statement.error
+          };
+        }
+        return statement;
+      });
+
+      this.preValidation.set({
+        mode: 'oracle',
+        success: mergedErrors.length === 0,
+        message:
+          mergedErrors.length === 0
+            ? oracleResult.message
+            : `Pré-validação encontrou ${mergedErrors.length} problema(s).`,
+        statements: mergedStatements,
+        errors: mergedErrors,
+        oracleAvailable: true
+      });
+      this.isPrevalidating.set(false);
+    });
   }
 
   applyCorrection(): void {
@@ -69,9 +137,11 @@ export class SyntaxValidationComponent {
     this.scriptText.set('');
     this.correctedText.set('');
     this.errors.set([]);
+    this.preValidation.set(null);
     this.statusMessage.set('');
     this.showStatus.set(false);
     this.isSuccess.set(false);
     this.hasCorrection.set(false);
+    this.isPrevalidating.set(false);
   }
 }

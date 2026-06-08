@@ -3,4 +3,16 @@ services:
     build: .
     ports:
       - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build: ./server
+    environment:
+      ORACLE_USER: ${ORACLE_USER:-}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-}
+      ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-}
+    expose:
+      - "3000"
     restart: unless-stopped
