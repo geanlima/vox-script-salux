@@ -1,0 +1,75 @@
+<div class="portal">
+  <header class="portal-header">
+    <div class="portal-header__brand">
+      <svg class="portal-header__logo" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l7.5 3.75v7.14L12 18.82l-7.5-3.75V7.93L12 4.18z"
+        />
+      </svg>
+      <div>
+        <span class="portal-header__title">VoxScript Salux</span>
+        <span class="portal-header__subtitle">Gerador de Scripts Oracle</span>
+      </div>
+    </div>
+    <div class="portal-header__actions">
+      <span class="portal-header__badge">INFOSAUDE</span>
+    </div>
+  </header>
+
+  <div class="portal-body">
+    <nav class="portal-nav portal-nav--mobile" aria-label="Navegação principal">
+      <a
+        class="portal-nav__item"
+        routerLink="/"
+        routerLinkActive="portal-nav__item--active"
+        [routerLinkActiveOptions]="{ exact: true }"
+      >
+        <span class="portal-nav__icon">&#9638;</span>
+        Cadastro
+      </a>
+      <a
+        class="portal-nav__item"
+        routerLink="/validacao"
+        routerLinkActive="portal-nav__item--active"
+      >
+        <span class="portal-nav__icon">&#10003;</span>
+        Validação
+      </a>
+      <a class="portal-nav__item" routerLink="/" fragment="regras">
+        <span class="portal-nav__icon">&#9432;</span>
+        Boas Práticas
+      </a>
+    </nav>
+
+    <aside class="portal-sidebar">
+      <nav class="portal-nav" aria-label="Navegação lateral">
+        <a
+          class="portal-nav__item"
+          routerLink="/"
+          routerLinkActive="portal-nav__item--active"
+          [routerLinkActiveOptions]="{ exact: true }"
+        >
+          <span class="portal-nav__icon">&#9638;</span>
+          Cadastro de Script
+        </a>
+        <a
+          class="portal-nav__item"
+          routerLink="/validacao"
+          routerLinkActive="portal-nav__item--active"
+        >
+          <span class="portal-nav__icon">&#10003;</span>
+          Validação
+        </a>
+        <a class="portal-nav__item" routerLink="/" fragment="regras">
+          <span class="portal-nav__icon">&#9432;</span>
+          Boas Práticas
+        </a>
+      </nav>
+    </aside>
+
+    <main class="portal-content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

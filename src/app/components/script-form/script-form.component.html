@@ -1,0 +1,497 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Cadastro de Script</h1>
+    <p class="page-header__desc">
+      Preencha os dados para gerar o arquivo <strong>.sql</strong> conforme as boas práticas do Cadastros Gerais.
+    </p>
+  </div>
+
+  @if (validationErrors().length > 0) {
+    <div class="alert alert--error" role="alert">
+      <strong>Corrija os campos abaixo:</strong>
+      <ul>
+        @for (error of validationErrors(); track error.field) {
+          <li>{{ error.message }}</li>
+        }
+      </ul>
+    </div>
+  }
+
+  <div class="grid">
+    <section class="card card--form">
+      <div class="card__header">
+        <h2>Cadastro</h2>
+      </div>
+      <div class="card__body">
+        <div class="form-section">
+          <h3 class="form-section__title">Identificação</h3>
+          <div class="form-grid form-grid--2">
+            <div class="form-row">
+              <label class="form-label" for="cardNumber">Número do Card *</label>
+              <input
+                id="cardNumber"
+                class="form-input"
+                type="text"
+                placeholder="Ex: 12345"
+                [ngModel]="form().cardNumber"
+                (ngModelChange)="updateField('cardNumber', $event)"
+              />
+            </div>
+
+            <div class="form-row">
+              <label class="form-label" for="scriptType">Tipo de Script *</label>
+              <select
+                id="scriptType"
+                class="form-input"
+                [ngModel]="form().scriptType"
+                (ngModelChange)="onScriptTypeChange($event)"
+              >
+                @for (type of scriptTypes; track type.value) {
+                  <option [value]="type.value">{{ type.label }}</option>
+                }
+              </select>
+              <span class="form-hint">{{ currentScriptDescription() }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3 class="form-section__title">Dados do Objeto</h3>
+
+        @if (currentScriptType() !== 'FUNCTION' && currentScriptType() !== 'PROCEDURE') {
+          @if (currentScriptType() === 'ADD_COLUMN' || currentScriptType() === 'CURSOR_NOT_NULL') {
+            <div class="form-grid form-grid--2">
+              <div class="form-row">
+                <label class="form-label" for="tableName">Tabela *</label>
+                <input
+                  id="tableName"
+                  class="form-input"
+                  type="text"
+                  placeholder="Ex: CHECAGEM_ELETRONICA_LOG"
+                  [ngModel]="form().tableName"
+                  (ngModelChange)="updateField('tableName', $event)"
+                />
+                <span class="form-hint">Schema INFOSAUDE. Máx. 30 caracteres.</span>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="columnName">Campo *</label>
+                <input
+                  id="columnName"
+                  class="form-input"
+                  type="text"
+                  placeholder="Ex: IN_OPERACAO"
+                  [ngModel]="form().columnName"
+                  (ngModelChange)="updateField('columnName', $event)"
+                />
+              </div>
+            </div>
+          } @else {
+            <div class="form-row">
+              <label class="form-label" for="tableName">Tabela *</label>
+              <input
+                id="tableName"
+                class="form-input"
+                type="text"
+                placeholder="Ex: CHECAGEM_ELETRONICA_LOG"
+                [ngModel]="form().tableName"
+                (ngModelChange)="updateField('tableName', $event)"
+              />
+              <span class="form-hint">Schema INFOSAUDE será aplicado automaticamente. Máx. 30 caracteres.</span>
+            </div>
+          }
+        }
+
+        @if (currentScriptType() === 'ADD_COLUMN' || currentScriptType() === 'CURSOR_NOT_NULL') {
+          <div class="form-grid form-grid--type">
+            <div class="form-row">
+              <label class="form-label" for="dataTypeBase">Tipo *</label>
+              <select
+                id="dataTypeBase"
+                class="form-input"
+                [ngModel]="form().dataTypeBase"
+                (ngModelChange)="updateField('dataTypeBase', $event)"
+              >
+                @for (type of baseTypes; track type) {
+                  <option [value]="type">{{ type }}</option>
+                }
+              </select>
+            </div>
+            @if (requiresSize(form().dataTypeBase)) {
+              <div class="form-row">
+                <label class="form-label" for="dataTypeSize">
+                  Tamanho@if (sizeIsRequired(form().dataTypeBase)) { *}
+                </label>
+                <input
+                  id="dataTypeSize"
+                  class="form-input"
+                  type="text"
+                  [placeholder]="form().dataTypeBase === 'NUMBER' ? 'Ex: 10 ou 10,2' : 'Ex: 50'"
+                  [ngModel]="form().dataTypeSize"
+                  (ngModelChange)="updateField('dataTypeSize', $event)"
+                />
+                <span class="form-hint">
+                  @if (form().dataTypeBase === 'NUMBER') {
+                    Opcional. Deixe vazio para NUMBER sem precisão.
+                  } @else {
+                    Informe o tamanho do campo.
+                  }
+                </span>
+              </div>
+            }
+          </div>
+
+          @if (currentScriptType() === 'ADD_COLUMN') {
+            <div class="form-grid form-grid--default-null">
+              <div class="form-row">
+                <label class="form-label" for="defaultValue">Valor padrão (opcional)</label>
+                <input
+                  id="defaultValue"
+                  class="form-input"
+                  type="text"
+                  placeholder="Ex: 'N' ou 0"
+                  [ngModel]="form().defaultValue"
+                  (ngModelChange)="updateField('defaultValue', $event)"
+                />
+              </div>
+              <div class="form-row form-row--checkbox">
+                <span class="form-label form-label--spacer" aria-hidden="true">&nbsp;</span>
+                <label class="form-check form-check--field">
+                  <input
+                    type="checkbox"
+                    [ngModel]="form().notNull"
+                    (ngModelChange)="updateField('notNull', $event)"
+                  />
+                  NOT NULL
+                </label>
+              </div>
+            </div>
+          }
+
+          @if (currentScriptType() === 'CURSOR_NOT_NULL') {
+            <div class="form-grid form-grid--2">
+              <div class="form-row">
+                <label class="form-label" for="cursorDefaultValue">Valor padrão do Cursor *</label>
+                <input
+                  id="cursorDefaultValue"
+                  class="form-input"
+                  type="text"
+                  placeholder="Ex: 'N'"
+                  [ngModel]="form().cursorDefaultValue"
+                  (ngModelChange)="updateField('cursorDefaultValue', $event)"
+                />
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="cursorWhereClause">Cláusula WHERE (opcional)</label>
+                <input
+                  id="cursorWhereClause"
+                  class="form-input"
+                  type="text"
+                  placeholder="Ex: in_virtual IS NULL"
+                  [ngModel]="form().cursorWhereClause"
+                  (ngModelChange)="updateField('cursorWhereClause', $event)"
+                />
+              </div>
+            </div>
+          }
+
+          <div class="form-row">
+            <label class="form-label" for="comment">Comentário do Campo *</label>
+            <textarea
+              id="comment"
+              class="form-input form-textarea"
+              rows="3"
+              placeholder="Ex: Flag que indica se a fia é de um RN ou não."
+              [ngModel]="form().comment"
+              (ngModelChange)="updateField('comment', $event)"
+            ></textarea>
+          </div>
+        }
+
+        @if (currentScriptType() === 'CREATE_TABLE') {
+          <div class="form-row">
+            <label class="form-label" for="tableComment">Comentário da Tabela (opcional)</label>
+            <input
+              id="tableComment"
+              class="form-input"
+              type="text"
+              placeholder="Ex: Tabela utilizada para gravar informacoes referentes..."
+              [ngModel]="form().tableComment"
+              (ngModelChange)="updateField('tableComment', $event)"
+            />
+          </div>
+
+          <div class="columns-list">
+            <div class="columns-list__header">
+              <h3>Colunas da Tabela</h3>
+              <button type="button" class="btn btn--secondary btn--small" (click)="addColumn()">
+                + Adicionar coluna
+              </button>
+            </div>
+
+            @for (col of form().columns; track $index) {
+              <div class="column-item">
+                <div class="column-item__header">
+                  <span>Coluna {{ $index + 1 }}</span>
+                  @if (form().columns.length > 1) {
+                    <button
+                      type="button"
+                      class="btn btn--text btn--small"
+                      (click)="removeColumn($index)"
+                    >
+                      Remover
+                    </button>
+                  }
+                </div>
+                <div class="form-grid form-grid--column">
+                  <div class="form-row">
+                    <label class="form-label">Nome *</label>
+                    <input
+                      class="form-input"
+                      type="text"
+                      [ngModel]="col.name"
+                      (ngModelChange)="updateColumn($index, 'name', $event)"
+                    />
+                  </div>
+                  <div class="form-row">
+                    <label class="form-label">Tipo *</label>
+                    <select
+                      class="form-input"
+                      [ngModel]="col.dataTypeBase"
+                      (ngModelChange)="updateColumn($index, 'dataTypeBase', $event)"
+                    >
+                      @for (type of baseTypes; track type) {
+                        <option [value]="type">{{ type }}</option>
+                      }
+                    </select>
+                  </div>
+                  @if (requiresSize(col.dataTypeBase)) {
+                    <div class="form-row">
+                      <label class="form-label">
+                        Tamanho@if (sizeIsRequired(col.dataTypeBase)) { *}
+                      </label>
+                      <input
+                        class="form-input"
+                        type="text"
+                        [placeholder]="col.dataTypeBase === 'NUMBER' ? 'Ex: 10 ou 10,2' : 'Ex: 50'"
+                        [ngModel]="col.dataTypeSize"
+                        (ngModelChange)="updateColumn($index, 'dataTypeSize', $event)"
+                      />
+                    </div>
+                  }
+                  <label class="form-check form-check--grid">
+                    <input
+                      type="checkbox"
+                      [ngModel]="col.notNull"
+                      (ngModelChange)="updateColumn($index, 'notNull', $event)"
+                    />
+                    NOT NULL
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label class="form-label">Comentário *</label>
+                  <input
+                    class="form-input"
+                    type="text"
+                    [ngModel]="col.comment"
+                    (ngModelChange)="updateColumn($index, 'comment', $event)"
+                  />
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        @if (currentScriptType() === 'PRIMARY_KEY') {
+          <div class="form-row">
+            <label class="form-label" for="pkColumns">Colunas da PK *</label>
+            <input
+              id="pkColumns"
+              class="form-input"
+              type="text"
+              placeholder="Ex: CD_HOSPITAL, ANO_MOVIMENTO, ID_MOVIMENTO"
+              [ngModel]="form().pkColumns"
+              (ngModelChange)="updateField('pkColumns', $event)"
+            />
+            <span class="form-hint">Separar colunas por vírgula. Nome gerado: PK_ + nome da tabela.</span>
+          </div>
+        }
+
+        @if (currentScriptType() === 'FOREIGN_KEY') {
+          <div class="form-grid form-grid--fk">
+            <div class="form-row">
+              <label class="form-label" for="fkSequence">Sequência FK *</label>
+              <input
+                id="fkSequence"
+                class="form-input"
+                type="number"
+                min="1"
+                [ngModel]="form().fkSequence"
+                (ngModelChange)="updateField('fkSequence', +$event)"
+              />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="fkColumns">Colunas FK *</label>
+              <input
+                id="fkColumns"
+                class="form-input"
+                type="text"
+                placeholder="Ex: CD_HOSPITAL, ANO_MOVIMENTO"
+                [ngModel]="form().fkColumns"
+                (ngModelChange)="updateField('fkColumns', $event)"
+              />
+            </div>
+          </div>
+          <div class="form-grid form-grid--2">
+            <div class="form-row">
+              <label class="form-label" for="fkRefTable">Tabela Referência *</label>
+              <input
+                id="fkRefTable"
+                class="form-input"
+                type="text"
+                [ngModel]="form().fkRefTable"
+                (ngModelChange)="updateField('fkRefTable', $event)"
+              />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="fkRefColumns">Colunas Referência *</label>
+              <input
+                id="fkRefColumns"
+                class="form-input"
+                type="text"
+                [ngModel]="form().fkRefColumns"
+                (ngModelChange)="updateField('fkRefColumns', $event)"
+              />
+            </div>
+          </div>
+        }
+
+        @if (currentScriptType() === 'CHECK_CONSTRAINT') {
+          <div class="form-grid form-grid--fk">
+            <div class="form-row">
+              <label class="form-label" for="ckcSequence">Sequência CKC *</label>
+              <input
+                id="ckcSequence"
+                class="form-input"
+                type="number"
+                min="1"
+                [ngModel]="form().ckcSequence"
+                (ngModelChange)="updateField('ckcSequence', +$event)"
+              />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="ckcExpression">Expressão CHECK *</label>
+              <input
+                id="ckcExpression"
+                class="form-input"
+                type="text"
+                placeholder="Ex: IN_OPERACAO IN ('P','C','X')"
+                [ngModel]="form().ckcExpression"
+                (ngModelChange)="updateField('ckcExpression', $event)"
+              />
+            </div>
+          </div>
+        }
+
+        @if (currentScriptType() === 'SEQUENCE') {
+          <div class="form-row">
+            <label class="form-label" for="sequenceName">Nome da Sequence *</label>
+            <input
+              id="sequenceName"
+              class="form-input"
+              type="text"
+              placeholder="Ex: SEQ_NOME_TABELA"
+              [ngModel]="form().sequenceName"
+              (ngModelChange)="updateField('sequenceName', $event)"
+            />
+            <span class="form-hint">Padrão: SEQ_ + nome da tabela.</span>
+          </div>
+        }
+
+        @if (currentScriptType() === 'FUNCTION' || currentScriptType() === 'PROCEDURE' || currentScriptType() === 'TRIGGER') {
+          <div class="form-row">
+            <label class="form-label" for="objectName">Nome do Objeto *</label>
+            <input
+              id="objectName"
+              class="form-input"
+              type="text"
+              placeholder="Ex: F_RETORNA_MES_EXTENSO"
+              [ngModel]="form().objectName"
+              (ngModelChange)="updateField('objectName', $event)"
+            />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="plsqlBody">Corpo PL/SQL *</label>
+            <textarea
+              id="plsqlBody"
+              class="form-input form-textarea form-textarea--code"
+              rows="12"
+              placeholder="Cole o corpo da function/procedure/trigger aqui (sem CREATE OR REPLACE)"
+              [ngModel]="form().plsqlBody"
+              (ngModelChange)="updateField('plsqlBody', $event)"
+            ></textarea>
+            <span class="form-hint">Sem comentários no script de Cadastros Gerais. O ; é permitido dentro do bloco PL/SQL.</span>
+          </div>
+        }
+        </div>
+      </div>
+
+      <div class="card__footer">
+        <button type="button" class="btn btn--secondary" (click)="resetForm()">Limpar</button>
+        <button type="button" class="btn btn--primary" (click)="generateScript()">
+          Gerar e Baixar .sql
+        </button>
+      </div>
+    </section>
+
+    @if (showPreview()) {
+      <section class="card card--preview">
+        <div class="card__header">
+          <h2>Preview do Script</h2>
+          <div class="card__header-actions">
+            <button type="button" class="btn btn--secondary btn--small" (click)="copyToClipboard()">
+              Copiar
+            </button>
+            <button type="button" class="btn btn--primary btn--small" (click)="downloadAgain()">
+              Baixar novamente
+            </button>
+          </div>
+        </div>
+        <div class="card__body">
+          <div class="file-info">
+            <span class="file-info__label">Arquivo:</span>
+            <code>{{ fileName() }}</code>
+          </div>
+          <pre class="sql-preview">{{ generatedSql() }}</pre>
+        </div>
+      </section>
+    }
+  </div>
+
+  <section id="regras" class="card card--rules">
+    <div class="card__header">
+      <h2>Boas Práticas</h2>
+    </div>
+    <div class="card__body rules-grid">
+      <div class="rule-item">
+        <span class="rule-item__num">1</span>
+        <p>Todo script deve ser criado/alterado usando o <strong>SQL Developer</strong>.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">2</span>
+        <p>Não é permitido incluir comentários dentro do script (exceto COMMENT ON).</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">3</span>
+        <p>Utilizar <code>/</code> para separar comandos, sem espaços ou linhas em branco antes/depois.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">5</span>
+        <p>Schema <strong>INFOSAUDE</strong> sempre informado nas instruções SQL.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">9</span>
+        <p>Nomes de objetos não podem ultrapassar <strong>30 caracteres</strong>.</p>
+      </div>
+    </div>
+  </section>
+</div>

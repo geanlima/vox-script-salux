@@ -1,0 +1,229 @@
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 600;
+    color: var(--portal-text);
+  }
+
+  &__desc {
+    margin: 0;
+    color: var(--portal-text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
+
+.card {
+  background: var(--portal-card-bg);
+  border: 1px solid var(--portal-border);
+  border-radius: 4px;
+  box-shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.06);
+  margin-bottom: 20px;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--portal-border);
+
+    h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--portal-text);
+    }
+  }
+
+  &__hint {
+    font-size: 13px;
+    color: var(--portal-text-secondary);
+  }
+
+  &__body {
+    padding: 20px;
+
+    &--table {
+      padding: 0;
+    }
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--portal-border);
+    background: var(--portal-footer-bg);
+  }
+}
+
+.script-input {
+  min-height: 320px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--portal-text);
+  background: #fff;
+  border: 1px solid var(--portal-input-border);
+  border-radius: 2px;
+
+  &::placeholder {
+    color: #b0adab;
+    font-style: italic;
+    opacity: 1;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--portal-primary);
+    box-shadow: 0 0 0 1px var(--portal-primary);
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+
+  &--primary {
+    background: var(--portal-primary);
+    color: #fff;
+
+    &:hover {
+      background: var(--portal-primary-hover);
+    }
+  }
+
+  &--secondary {
+    background: #fff;
+    color: var(--portal-text);
+    border-color: var(--portal-input-border);
+
+    &:hover {
+      background: var(--portal-hover);
+    }
+  }
+}
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  font-weight: 600;
+
+  &--success {
+    background: #dff6dd;
+    border: 1px solid #9fd89f;
+    color: #0b6a0b;
+  }
+
+  &--error {
+    background: #fde7e9;
+    border: 1px solid #f1aeb5;
+    color: #a4262c;
+  }
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+
+  &--error {
+    background: #fde7e9;
+    color: #a4262c;
+  }
+}
+
+.empty-state {
+  margin: 0;
+  padding: 24px 20px;
+  color: var(--portal-text-secondary);
+  font-size: 14px;
+  text-align: center;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.error-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 12px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--portal-border);
+  }
+
+  th {
+    background: var(--portal-footer-bg);
+    font-weight: 600;
+    color: var(--portal-text);
+    white-space: nowrap;
+  }
+
+  tbody tr:hover {
+    background: var(--portal-hover);
+  }
+
+  &__line {
+    width: 80px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--portal-primary);
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 575px) {
+  .card__body,
+  .card__footer,
+  .card__header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .card__footer {
+    flex-direction: column-reverse;
+
+    .btn {
+      width: 100%;
+    }
+  }
+
+  .error-table th,
+  .error-table td {
+    padding: 10px 16px;
+  }
+}

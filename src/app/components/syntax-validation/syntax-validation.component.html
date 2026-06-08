@@ -1,0 +1,72 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Validação de Sintaxe</h1>
+    <p class="page-header__desc">
+      Validador de sintaxe para o Cadastros Gerais — cole seu script e clique em <strong>Avaliar</strong>.
+    </p>
+  </div>
+
+  @if (showStatus()) {
+    <div
+      class="alert"
+      [class.alert--success]="isSuccess()"
+      [class.alert--error]="!isSuccess()"
+      role="status"
+    >
+      {{ statusMessage() }}
+    </div>
+  }
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Script</h2>
+      <span class="card__hint">Cole aqui seu script para validar</span>
+    </div>
+    <div class="card__body">
+      <textarea
+        class="form-input form-textarea form-textarea--code script-input"
+        rows="16"
+        placeholder="Cole o conteúdo do arquivo .sql aqui..."
+        [ngModel]="scriptText()"
+        (ngModelChange)="scriptText.set($event)"
+      ></textarea>
+    </div>
+    <div class="card__footer">
+      <button type="button" class="btn btn--secondary" (click)="clear()">Limpar</button>
+      <button type="button" class="btn btn--primary" (click)="evaluate()">Avaliar</button>
+    </div>
+  </section>
+
+  <section class="card card--errors">
+    <div class="card__header">
+      <h2>Log de Erros</h2>
+      @if (errors().length > 0) {
+        <span class="badge badge--error">{{ errors().length }} inconsistência(s)</span>
+      }
+    </div>
+    <div class="card__body card__body--table">
+      @if (errors().length === 0) {
+        <p class="empty-state">Nenhum erro registrado. Execute a avaliação para ver o resultado.</p>
+      } @else {
+        <div class="table-wrap">
+          <table class="error-table">
+            <thead>
+              <tr>
+                <th>Linha</th>
+                <th>Descrição</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (error of errors(); track $index) {
+                <tr>
+                  <td class="error-table__line">{{ error.linha || '-' }}</td>
+                  <td>{{ error.descricao }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </section>
+</div>

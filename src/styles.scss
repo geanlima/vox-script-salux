@@ -1,0 +1,56 @@
+:root {
+  --portal-primary: #0078d4;
+  --portal-primary-hover: #106ebe;
+  --portal-header-bg: #0078d4;
+  --portal-bg: #f3f2f1;
+  --portal-sidebar-bg: #faf9f8;
+  --portal-card-bg: #ffffff;
+  --portal-footer-bg: #faf9f8;
+  --portal-text: #323130;
+  --portal-text-secondary: #605e5c;
+  --portal-border: #edebe9;
+  --portal-input-border: #8a8886;
+  --portal-hover: #f3f2f1;
+  --portal-active: #eff6fc;
+  --portal-placeholder: #b0adab;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont,
+    Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  color: var(--portal-text);
+  background: var(--portal-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--portal-placeholder);
+  font-style: italic;
+  opacity: 1;
+}
+
+code,
+pre {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+}
