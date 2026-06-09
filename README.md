@@ -34,7 +34,11 @@ Formulário para montar scripts Oracle com:
 
 ### Validação de Sintaxe
 
-Validador portado do PowerBuilder (`w_sintaxe` — Cadastros Gerais V7). Cole o script e clique em **Avaliar**.
+Validador portado do PowerBuilder (`w_sintaxe` — Cadastros Gerais V7). Cole o script e clique em **Avaliar** — uma única ação executa:
+
+1. **Regras do Cadastros Gerais** (formatação, INFOSAUDE, nomenclatura)
+2. **Análise estática por comando** (aspas, parênteses, schema)
+3. **Validação Oracle** via `DBMS_SQL.PARSE` (quando o container estiver conectado)
 
 **Regras verificadas:**
 
@@ -53,80 +57,261 @@ Validador portado do PowerBuilder (`w_sintaxe` — Cadastros Gerais V7). Cole o 
 
 ## Deploy com Docker (frontend + API + Oracle de validação)
 
+### Fluxo
+
+```
+[PC Windows]  build + push     [Docker Hub]     pull + up     [GSLServer]
+     │              ──────────────────►              ───────────────►
+     │         geandasilvalima/vox-script-salux*                    http://191.252.181.56
+```
+
 O stack sobe 3 containers:
 
 | Container | Função |
 |-----------|--------|
 | `vox-script-salux` | Frontend Angular (nginx) |
-| `api` | Backend Node.js para pré-validação Oracle |
-| `oracle` | Oracle XE dedicado **somente** à validação de sintaxe (`DBMS_SQL.PARSE`) |
+| `api` | Backend Node.js — validação Oracle |
+| `oracle` | Oracle XE — apenas `DBMS_SQL.PARSE` (sintaxe) |
 
-### Desenvolvimento local (build)
+### Ambiente de produção (GSLServer)
 
-```bash
-cp .env.example .env
-# Edite DOCKERHUB_USER com seu usuário do Docker Hub
+| Item | Valor |
+|------|-------|
+| Docker Hub | `geandasilvalima` |
+| Imagens | `geandasilvalima/vox-script-salux` · `geandasilvalima/vox-script-salux-api` |
+| Servidor | GSLServer (Locaweb) — `vps66927.publiccloud.com.br` |
+| IP / SSH | `root@191.252.181.56` |
+| URL | http://191.252.181.56 |
+| Pasta no servidor | `/opt/vox-script-salux` |
 
+### Onde executar cada comando
+
+| Ação | Onde rodar |
+|------|------------|
+| `docker compose up --build` | **PC Windows** (pasta do projeto) |
+| `.\scripts\docker-publish.ps1` | **PC Windows** |
+| `ssh root@191.252.181.56` | **PC Windows** → abre sessão no servidor |
+| `docker compose -f docker-compose.prod.yml ...` | **Dentro do SSH** (servidor) |
+| `scp arquivo root@191...` | **PC Windows** (terminal **fora** do SSH) |
+
+> **Atenção:** não rode `scp` dentro da sessão SSH. Lá você já está no servidor — os arquivos `.yml` e `.env` ficam no seu PC (`C:\Projetos\GSL\vox-script-salux`), não em `root@vps66927`.
+
+---
+
+### 1. Desenvolvimento local (PC)
+
+```powershell
+cd C:\Projetos\GSL\vox-script-salux
+copy .env.example .env
 docker compose up --build -d
 ```
 
-Acesse: `http://localhost:8080` (porta padrão; altere `WEB_PORT` no `.env`).
+| Ambiente | URL |
+|----------|-----|
+| Docker local | http://localhost:8080 |
+| `ng serve` | http://localhost:4200 (API em `:3000` via proxy) |
 
-### Publicar no Docker Hub
+---
 
-1. Crie uma conta em [hub.docker.com](https://hub.docker.com) e os repositórios (opcional — o push cria automaticamente):
-   - `{seu-usuario}/vox-script-salux`
-   - `{seu-usuario}/vox-script-salux-api`
+### 2. Publicar imagens no Docker Hub (PC)
 
-2. Faça login e publique:
+Antes do primeiro deploy no servidor, publique as imagens:
 
-```bash
+```powershell
+cd C:\Projetos\GSL\vox-script-salux
 docker login
-# Windows
-./scripts/docker-publish.ps1
-# Linux / macOS
-chmod +x scripts/docker-publish.sh && ./scripts/docker-publish.sh
-
-# Versão específica (recomendado em produção)
-./scripts/docker-publish.ps1 -Tag 1.0.0
-./scripts/docker-publish.sh 1.0.0
+.\scripts\docker-publish.ps1
 ```
 
-### Atualizar no servidor (pull das imagens)
+Com versão fixa (recomendado):
 
-No servidor, copie apenas:
+```powershell
+.\scripts\docker-publish.ps1 -Tag 1.0.0
+```
 
-- `docker-compose.prod.yml`
-- `.env` (com `DOCKERHUB_USER`, senhas Oracle e `WEB_PORT`)
+---
+
+### 3. Preparar o servidor (primeira vez)
+
+#### 3.1 Conectar e instalar Docker
+
+No **PC**:
+
+```powershell
+ssh root@191.252.181.56
+```
+
+No **servidor**:
 
 ```bash
+curl -fsSL https://get.docker.com | sh
+systemctl enable docker && systemctl start docker
+mkdir -p /opt/vox-script-salux
+```
+
+#### 3.2 Copiar arquivos de deploy para o servidor
+
+Escolha **uma** opção:
+
+**Opção A — Git (recomendado se o repositório estiver no GitHub/GitLab)**
+
+No **servidor**:
+
+```bash
+cd /opt/vox-script-salux
+git clone <url-do-repositorio> .    # só na 1ª vez, se a pasta estiver vazia
+git pull
+cp deploy/server.env.example .env
+nano .env                           # altere as senhas Oracle
+```
+
+**Opção B — Criar arquivos direto no servidor**
+
+No **servidor** (`ssh root@191.252.181.56`), cole o bloco abaixo inteiro:
+
+```bash
+cd /opt/vox-script-salux
+
+cat > docker-compose.prod.yml << 'EOF'
+services:
+  vox-script-salux:
+    image: ${DOCKERHUB_USER}/vox-script-salux:${IMAGE_TAG:-latest}
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    image: ${DOCKERHUB_USER}/vox-script-salux-api:${IMAGE_TAG:-latest}
+    environment:
+      ORACLE_USER: ${ORACLE_USER:-validator}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
+      ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-oracle:1521/XEPDB1}
+    depends_on:
+      oracle:
+        condition: service_healthy
+    restart: unless-stopped
+
+  oracle:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-ValidatorAdmin1}
+      APP_USER: ${ORACLE_USER:-validator}
+      APP_USER_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
+    volumes:
+      - oracle-validator-data:/opt/oracle/oradata
+    expose:
+      - "1521"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    shm_size: "1gb"
+    restart: unless-stopped
+
+volumes:
+  oracle-validator-data:
+EOF
+
+cat > .env << 'EOF'
+DOCKERHUB_USER=geandasilvalima
+IMAGE_TAG=latest
+WEB_PORT=80
+ORACLE_USER=validator
+ORACLE_PASSWORD=AltereEstaSenha1
+ORACLE_ADMIN_PASSWORD=AltereEstaSenhaAdmin1
+ORACLE_CONNECT_STRING=oracle:1521/XEPDB1
+EOF
+
+nano .env
+```
+
+**Opção C — `scp` a partir do PC**
+
+Abra um **novo** PowerShell no Windows (sem estar no SSH):
+
+```powershell
+cd C:\Projetos\GSL\vox-script-salux
+scp docker-compose.prod.yml root@191.252.181.56:/opt/vox-script-salux/
+scp deploy/server.env.example root@191.252.181.56:/opt/vox-script-salux/.env
+```
+
+Se `scp` não for reconhecido, instale **OpenSSH Client** em *Configurações → Aplicativos → Recursos opcionais*, ou use a **Opção A** ou **B**.
+
+---
+
+### 4. Subir no servidor
+
+No **servidor**:
+
+```bash
+cd /opt/vox-script-salux
 docker login
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Ou use o script:
+Aguarde **3–5 minutos** na primeira subida (download + init do Oracle).
+
+Verificar:
 
 ```bash
-chmod +x scripts/docker-update-server.sh
-./scripts/docker-update-server.sh
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f api
 ```
 
-Para atualizar para uma versão específica, defina no `.env`:
+Acesse: **http://191.252.181.56**
+
+---
+
+### 5. Atualizar após mudanças no código
+
+| Etapa | Onde | Comando |
+|-------|------|---------|
+| 1. Publicar nova imagem | PC | `.\scripts\docker-publish.ps1` |
+| 2. Baixar e reiniciar | Servidor | `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d` |
+
+Versão específica — altere no `.env` do servidor:
 
 ```env
 IMAGE_TAG=1.0.0
 ```
 
-**Importante:** o Oracle XE consome memória (~1 GB em execução). Em VPS com 2 GB de RAM, a primeira subida pode levar alguns minutos. Recomendado **4 GB+** de RAM para operação estável.
+---
 
-Credenciais padrão do Oracle de validação (altere em produção via `.env`):
+### Solução de problemas
 
-- Usuário: `validator`
-- Senha: `ValidatorPass1`
-- Connect string interno: `oracle:1521/XEPDB1`
+| Problema | Causa | Solução |
+|----------|-------|---------|
+| `scp: No such file or directory` | Comando rodado **dentro** do SSH | Use Opção B no servidor ou `scp` em terminal **local** no PC |
+| `scp` não reconhecido no Windows | OpenSSH não instalado | Opção A (git) ou Opção B (`cat`) |
+| Porta 80 em uso | Outro serviço na VPS | Defina `WEB_PORT=8080` no `.env` e acesse `:8080` |
+| Container Oracle reinicia | VPS com 2 GB RAM | Crie swap ou faça upgrade de RAM na Locaweb |
+| Imagens não encontradas | Push não feito | Rode `.\scripts\docker-publish.ps1` no PC antes do `pull` |
 
-O Oracle de validação **não deve** ser usado para dados reais — apenas para analisar sintaxe dos scripts.
+### Observações
+
+- O Oracle XE usa ~1 GB de RAM. O GSLServer tem **2 GB** — monitore com `docker stats`.
+- Altere as senhas Oracle no `.env` do servidor antes de produção.
+- O banco de validação **não** armazena dados reais — só analisa sintaxe.
+- Objetos inexistentes (tabelas, sequences) **não** geram erro; apenas falhas reais de sintaxe.
+
+### Arquivos de deploy
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `docker-compose.yml` | Build local + push |
+| `docker-compose.prod.yml` | Servidor — pull sem build |
+| `.env.example` | Variáveis para desenvolvimento local |
+| `deploy/server.env.example` | Modelo de `.env` para o servidor |
+| `deploy/setup-server.sh` | Copia `server.env.example` → `.env` no servidor |
+| `scripts/docker-publish.ps1` | Build + push (Windows) |
+| `scripts/docker-update-server.sh` | Pull + restart no servidor |
+
 
 ## Instalação
 
