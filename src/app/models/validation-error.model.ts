@@ -22,6 +22,7 @@ export interface StatementValidation {
   preview: string;
   valid: boolean;
   error?: string;
+  warning?: string;
 }
 
 export interface PreValidationResult {
@@ -30,5 +31,6 @@ export interface PreValidationResult {
   message: string;
   statements: StatementValidation[];
   errors: PreValidationError[];
+  warnings?: PreValidationError[];
   oracleAvailable?: boolean;
 }

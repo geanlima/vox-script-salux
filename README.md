@@ -49,6 +49,84 @@ Validador portado do PowerBuilder (`w_sintaxe` — Cadastros Gerais V7). Cole o 
 
 - [Node.js](https://nodejs.org/) 18+ (recomendado 20+)
 - npm 9+
+- Docker + Docker Compose (para deploy com pré-validação Oracle)
+
+## Deploy com Docker (frontend + API + Oracle de validação)
+
+O stack sobe 3 containers:
+
+| Container | Função |
+|-----------|--------|
+| `vox-script-salux` | Frontend Angular (nginx) |
+| `api` | Backend Node.js para pré-validação Oracle |
+| `oracle` | Oracle XE dedicado **somente** à validação de sintaxe (`DBMS_SQL.PARSE`) |
+
+### Desenvolvimento local (build)
+
+```bash
+cp .env.example .env
+# Edite DOCKERHUB_USER com seu usuário do Docker Hub
+
+docker compose up --build -d
+```
+
+Acesse: `http://localhost:8080` (porta padrão; altere `WEB_PORT` no `.env`).
+
+### Publicar no Docker Hub
+
+1. Crie uma conta em [hub.docker.com](https://hub.docker.com) e os repositórios (opcional — o push cria automaticamente):
+   - `{seu-usuario}/vox-script-salux`
+   - `{seu-usuario}/vox-script-salux-api`
+
+2. Faça login e publique:
+
+```bash
+docker login
+# Windows
+./scripts/docker-publish.ps1
+# Linux / macOS
+chmod +x scripts/docker-publish.sh && ./scripts/docker-publish.sh
+
+# Versão específica (recomendado em produção)
+./scripts/docker-publish.ps1 -Tag 1.0.0
+./scripts/docker-publish.sh 1.0.0
+```
+
+### Atualizar no servidor (pull das imagens)
+
+No servidor, copie apenas:
+
+- `docker-compose.prod.yml`
+- `.env` (com `DOCKERHUB_USER`, senhas Oracle e `WEB_PORT`)
+
+```bash
+docker login
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Ou use o script:
+
+```bash
+chmod +x scripts/docker-update-server.sh
+./scripts/docker-update-server.sh
+```
+
+Para atualizar para uma versão específica, defina no `.env`:
+
+```env
+IMAGE_TAG=1.0.0
+```
+
+**Importante:** o Oracle XE consome memória (~1 GB em execução). Em VPS com 2 GB de RAM, a primeira subida pode levar alguns minutos. Recomendado **4 GB+** de RAM para operação estável.
+
+Credenciais padrão do Oracle de validação (altere em produção via `.env`):
+
+- Usuário: `validator`
+- Senha: `ValidatorPass1`
+- Connect string interno: `oracle:1521/XEPDB1`
+
+O Oracle de validação **não deve** ser usado para dados reais — apenas para analisar sintaxe dos scripts.
 
 ## Instalação
 

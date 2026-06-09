@@ -2,8 +2,8 @@
   <div class="page-header">
     <h1>Validação de Sintaxe</h1>
     <p class="page-header__desc">
-      Validador de sintaxe para o Cadastros Gerais — cole seu script e use <strong>Avaliar</strong> para regras do Cadastros Gerais
-      ou <strong>Pré-validar execução</strong> para simular a execução comando a comando.
+      Validador de sintaxe para o Cadastros Gerais — cole seu script e clique em <strong>Avaliar</strong>
+      para verificar regras do Cadastros Gerais, sintaxe Oracle e análise comando a comando.
     </p>
   </div>
 
@@ -36,19 +36,18 @@
       <button type="button" class="btn btn--secondary" (click)="clear()">Limpar</button>
       <button
         type="button"
-        class="btn btn--secondary"
-        [disabled]="isPrevalidating()"
-        (click)="prevalidateExecution()"
+        class="btn btn--primary"
+        [disabled]="isEvaluating()"
+        (click)="evaluate()"
       >
-        {{ isPrevalidating() ? 'Pré-validando...' : 'Pré-validar execução' }}
+        {{ isEvaluating() ? 'Avaliando...' : 'Avaliar' }}
       </button>
-      <button type="button" class="btn btn--primary" (click)="evaluate()">Avaliar</button>
     </div>
     <p class="card__footer-note">
       @if (oracleAvailable()) {
-        Oracle conectado: a pré-validação usa <strong>DBMS_SQL.PARSE</strong> (sintaxe, sem alterar dados).
+        Oracle conectado: valida a <strong>sintaxe</strong> via DBMS_SQL.PARSE. Objetos inexistentes no banco de validação não são reportados.
       } @else {
-        Oracle não configurado: a pré-validação usa análise estática local. Configure <code>ORACLE_*</code> no servidor para validação real.
+        Oracle ainda iniciando ou indisponível. A avaliação Oracle usa análise estática até o container ficar pronto.
       }
     </p>
   </section>
@@ -89,7 +88,7 @@
   @if (preValidation()) {
     <section class="card card--prevalidation">
       <div class="card__header">
-        <h2>Pré-validação de Execução</h2>
+        <h2>Validação Oracle por Comando</h2>
         <span
           class="badge"
           [class.badge--success]="preValidation()!.success"

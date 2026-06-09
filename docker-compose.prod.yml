@@ -1,13 +1,18 @@
-# Desenvolvimento local: build + opcional push para Docker Hub
-# Publicar:  docker login && ./scripts/docker-publish.ps1
-# Servidor:  use docker-compose.prod.yml (pull das imagens)
+# Deploy no servidor — baixa imagens do Docker Hub (sem build)
+#
+# 1. Copie este arquivo + .env para o servidor
+# 2. docker login
+# 3. docker compose -f docker-compose.prod.yml pull
+# 4. docker compose -f docker-compose.prod.yml up -d
+#
+# Atualizar versão:
+#   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
 
 services:
   vox-script-salux:
     image: ${DOCKERHUB_USER}/vox-script-salux:${IMAGE_TAG:-latest}
-    build: .
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_PORT:-80}:80"
     depends_on:
       api:
         condition: service_started
@@ -15,7 +20,6 @@ services:
 
   api:
     image: ${DOCKERHUB_USER}/vox-script-salux-api:${IMAGE_TAG:-latest}
-    build: ./server
     environment:
       ORACLE_USER: ${ORACLE_USER:-validator}
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
@@ -23,8 +27,6 @@ services:
     depends_on:
       oracle:
         condition: service_healthy
-    ports:
-      - "${API_PORT:-3000}:3000"
     restart: unless-stopped
 
   oracle:

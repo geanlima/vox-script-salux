@@ -1,4 +1,8 @@
 import oracledb from 'oracledb';
+import {
+  getOracleErrorSummary,
+  isIgnorableSemanticError
+} from './oracle-error-classifier.js';
 import { splitOracleScript } from './script-splitter.js';
 
 let pool = null;
@@ -29,6 +33,47 @@ export async function initOraclePool() {
   });
 
   return true;
+}
+
+export async function waitForOraclePool(maxAttempts = 30, delayMs = 5000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await initOraclePool();
+      const connection = await pool.getConnection();
+      await connection.execute('SELECT 1 FROM DUAL');
+      await connection.close();
+      return true;
+    } catch (error) {
+      if (pool) {
+        await closeOraclePool();
+      }
+
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+
+      console.log(`Aguardando Oracle... tentativa ${attempt}/${maxAttempts}`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return false;
+}
+
+export async function isOracleReady() {
+  if (!isOracleConfigured()) {
+    return false;
+  }
+
+  try {
+    await initOraclePool();
+    const connection = await pool.getConnection();
+    await connection.execute('SELECT 1 FROM DUAL');
+    await connection.close();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function closeOraclePool() {
@@ -96,16 +141,28 @@ export async function prevalidateScript(sql) {
         });
       } catch (error) {
         const message = error?.message ?? 'Erro desconhecido ao analisar o comando.';
+
+        if (isIgnorableSemanticError(error)) {
+          statementResults.push({
+            index: statement.index,
+            linha: statement.startLine,
+            preview: statement.preview,
+            valid: true
+          });
+          continue;
+        }
+
+        const summary = getOracleErrorSummary(error);
         errors.push({
           linha: statement.startLine,
-          descricao: `Comando ${statement.index}: ${message}`
+          descricao: `Comando ${statement.index}: ${summary}`
         });
         statementResults.push({
           index: statement.index,
           linha: statement.startLine,
           preview: statement.preview,
           valid: false,
-          error: message
+          error: summary
         });
       }
     }
@@ -114,6 +171,7 @@ export async function prevalidateScript(sql) {
   }
 
   const success = errors.length === 0;
+
   return {
     mode: 'oracle',
     success,

@@ -2,7 +2,8 @@ import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   PreValidationResult,
-  ValidationLogError
+  ValidationLogError,
+  ValidationResult
 } from '../../models/validation-error.model';
 import { OracleExecutionService } from '../../services/oracle-execution.service';
 import { ScriptPrevalidatorService } from '../../services/script-prevalidator.service';
@@ -25,7 +26,7 @@ export class SyntaxValidationComponent implements OnInit {
   isSuccess = signal(false);
   hasCorrection = signal(false);
   oracleAvailable = signal(false);
-  isPrevalidating = signal(false);
+  isEvaluating = signal(false);
 
   constructor(
     private readonly validator: SyntaxValidatorService,
@@ -40,19 +41,13 @@ export class SyntaxValidationComponent implements OnInit {
   }
 
   evaluate(): void {
+    const script = this.scriptText();
+    this.isEvaluating.set(true);
+    this.preValidation.set(null);
+
+    let cadastrosResult: ValidationResult;
     try {
-      const result = this.validator.validate(this.scriptText());
-      this.errors.set(result.errors);
-      this.statusMessage.set(result.message);
-      this.isSuccess.set(result.success);
-      this.correctedText.set(result.correctedText);
-      this.hasCorrection.set(
-        !result.success &&
-          result.correctedText.trim() !== '' &&
-          result.correctedText !== this.scriptText()
-      );
-      this.showStatus.set(true);
-      this.preValidation.set(null);
+      cadastrosResult = this.validator.validate(script);
     } catch {
       this.errors.set([
         {
@@ -66,55 +61,40 @@ export class SyntaxValidationComponent implements OnInit {
       this.correctedText.set('');
       this.hasCorrection.set(false);
       this.showStatus.set(true);
-      this.preValidation.set(null);
+      this.isEvaluating.set(false);
+      return;
     }
-  }
 
-  prevalidateExecution(): void {
-    const script = this.scriptText();
-    this.isPrevalidating.set(true);
-    this.preValidation.set(null);
+    this.errors.set(cadastrosResult.errors);
+    this.correctedText.set(cadastrosResult.correctedText);
+    this.hasCorrection.set(
+      !cadastrosResult.success &&
+        cadastrosResult.correctedText.trim() !== '' &&
+        cadastrosResult.correctedText !== script
+    );
 
     const staticResult = this.prevalidator.validate(script);
 
+    const finish = (preValidation: PreValidationResult) => {
+      this.preValidation.set(preValidation);
+      this.isSuccess.set(cadastrosResult.success && preValidation.success);
+      this.statusMessage.set(this.buildStatusMessage(cadastrosResult, preValidation));
+      this.showStatus.set(true);
+      this.isEvaluating.set(false);
+    };
+
     if (!this.oracleAvailable()) {
-      this.preValidation.set(staticResult);
-      this.isPrevalidating.set(false);
+      finish(staticResult);
       return;
     }
 
     this.oracleExecution.prevalidate(script).subscribe((oracleResult) => {
       if (oracleResult.oracleAvailable === false) {
-        this.preValidation.set(staticResult);
-        this.isPrevalidating.set(false);
+        finish(staticResult);
         return;
       }
 
-      const mergedErrors = [...staticResult.errors, ...oracleResult.errors];
-      const mergedStatements = oracleResult.statements.map((statement) => {
-        const staticStatement = staticResult.statements.find((item) => item.index === statement.index);
-        if (staticStatement && !staticStatement.valid) {
-          return {
-            ...statement,
-            valid: false,
-            error: staticStatement.error ?? statement.error
-          };
-        }
-        return statement;
-      });
-
-      this.preValidation.set({
-        mode: 'oracle',
-        success: mergedErrors.length === 0,
-        message:
-          mergedErrors.length === 0
-            ? oracleResult.message
-            : `Pré-validação encontrou ${mergedErrors.length} problema(s).`,
-        statements: mergedStatements,
-        errors: mergedErrors,
-        oracleAvailable: true
-      });
-      this.isPrevalidating.set(false);
+      finish(this.mergePrevalidation(staticResult, oracleResult));
     });
   }
 
@@ -142,6 +122,59 @@ export class SyntaxValidationComponent implements OnInit {
     this.showStatus.set(false);
     this.isSuccess.set(false);
     this.hasCorrection.set(false);
-    this.isPrevalidating.set(false);
+    this.isEvaluating.set(false);
+  }
+
+  private mergePrevalidation(
+    staticResult: PreValidationResult,
+    oracleResult: PreValidationResult
+  ): PreValidationResult {
+    const mergedErrors = [...staticResult.errors, ...oracleResult.errors];
+    const mergedStatements = oracleResult.statements.map((statement) => {
+      const staticStatement = staticResult.statements.find((item) => item.index === statement.index);
+      if (staticStatement && !staticStatement.valid) {
+        return {
+          ...statement,
+          valid: false,
+          error: staticStatement.error ?? statement.error,
+          warning: undefined
+        };
+      }
+      return statement;
+    });
+
+    return {
+      mode: 'oracle',
+      success: mergedErrors.length === 0,
+      message:
+        mergedErrors.length === 0
+          ? oracleResult.message
+          : `Validação Oracle encontrou ${mergedErrors.length} problema(s).`,
+      statements: mergedStatements,
+      errors: mergedErrors,
+      oracleAvailable: true
+    };
+  }
+
+  private buildStatusMessage(
+    cadastrosResult: ValidationResult,
+    preValidation: PreValidationResult
+  ): string {
+    const cadastrosOk = cadastrosResult.success;
+    const oracleOk = preValidation.success;
+
+    if (cadastrosOk && oracleOk) {
+      return cadastrosResult.message;
+    }
+
+    if (!cadastrosOk && !oracleOk) {
+      return 'Inconsistências encontradas nas regras do Cadastros Gerais e na sintaxe Oracle.';
+    }
+
+    if (!cadastrosOk) {
+      return cadastrosResult.message;
+    }
+
+    return preValidation.message;
   }
 }
