@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import { initScriptStorageSchema, isScriptStorageReady } from './db/oracle-scripts.js';
 import {
   closeOraclePool,
   isOracleConfigured,
@@ -7,6 +8,7 @@ import {
   prevalidateScript,
   waitForOraclePool
 } from './oracle-validator.js';
+import scriptsRouter from './routes/scripts.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -15,16 +17,22 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', async (_req, res) => {
-  const configured = isOracleConfigured();
-  const available = configured ? await isOracleReady() : false;
+  const oracleConfigured = isOracleConfigured();
+  const oracleAvailable = oracleConfigured ? await isOracleReady() : false;
 
   res.json({
-    available,
-    configured,
+    available: oracleAvailable,
+    configured: oracleConfigured,
     service: 'vox-script-salux-api',
-    mode: available ? 'oracle-container' : configured ? 'oracle-unavailable' : 'not-configured'
+    mode: oracleAvailable ? 'oracle-container' : oracleConfigured ? 'oracle-unavailable' : 'not-configured',
+    storage: {
+      configured: oracleConfigured,
+      available: oracleConfigured ? await isScriptStorageReady() : false
+    }
   });
 });
+
+app.use('/api/scripts', scriptsRouter);
 
 app.post('/api/prevalidate', async (req, res) => {
   const sql = req.body?.sql ?? '';
@@ -82,13 +90,14 @@ const server = app.listen(port, async () => {
   console.log(`API ouvindo na porta ${port}`);
 
   if (!isOracleConfigured()) {
-    console.log('Oracle não configurado. Apenas /api/health disponível.');
+    console.log('Oracle não configurado. Pré-validação e CRUD de scripts indisponíveis.');
     return;
   }
 
   try {
     await waitForOraclePool();
-    console.log('Pool Oracle de pré-validação inicializado.');
+    await initScriptStorageSchema();
+    console.log('Pool Oracle inicializado (validação + armazenamento de scripts).');
   } catch (error) {
     console.error('Falha ao inicializar Oracle:', error.message);
   }

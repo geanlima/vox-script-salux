@@ -1,9 +1,43 @@
 <div class="page">
-  <div class="page-header">
-    <h1>Cadastro de Script</h1>
-    <p class="page-header__desc">
-      Preencha os dados para gerar o arquivo <strong>.sql</strong> conforme as boas práticas do Cadastros Gerais.
-    </p>
+  <div class="command-bar">
+    <div class="command-bar__start">
+      <div>
+        <h1 class="command-bar__title">Cadastro de Script</h1>
+        <p class="command-bar__desc">
+          Gere o arquivo <strong>.sql</strong> conforme as boas práticas do Cadastros Gerais.
+        </p>
+      </div>
+      @if (isEditingSavedScript()) {
+        <span class="command-bar__badge">Editando #{{ savedScriptId() }}</span>
+      }
+    </div>
+    <div class="command-bar__actions">
+      <a class="btn btn--secondary btn--toolbar" routerLink="/scripts">Scripts salvos</a>
+      <button type="button" class="btn btn--secondary btn--toolbar" (click)="resetForm()">
+        Limpar
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary btn--toolbar"
+        (click)="saveScript()"
+        [disabled]="saving() || !storageAvailable()"
+        [title]="storageAvailable() ? '' : 'Oracle indisponível no servidor'"
+      >
+        {{ saving() ? 'Salvando...' : isEditingSavedScript() ? 'Atualizar' : 'Salvar' }}
+      </button>
+      <button type="button" class="btn btn--secondary btn--toolbar" (click)="generateScript()">
+        Gerar
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary btn--toolbar"
+        (click)="downloadScript()"
+        [disabled]="!canDownloadScript()"
+        title="Gere o script antes de baixar"
+      >
+        Baixar .sql
+      </button>
+    </div>
   </div>
 
   @if (validationErrors().length > 0) {
@@ -15,6 +49,14 @@
         }
       </ul>
     </div>
+  }
+
+  @if (storageError()) {
+    <div class="alert alert--error" role="alert">{{ storageError() }}</div>
+  }
+
+  @if (storageMessage()) {
+    <div class="alert alert--success" role="status">{{ storageMessage() }}</div>
   }
 
   <div class="grid">
@@ -59,8 +101,39 @@
           <h3 class="form-section__title">Dados do Objeto</h3>
 
         @if (currentScriptType() !== 'FUNCTION' && currentScriptType() !== 'PROCEDURE') {
-          @if (currentScriptType() === 'ADD_COLUMN' || currentScriptType() === 'CURSOR_NOT_NULL') {
-            <div class="form-grid form-grid--2">
+        @if (currentScriptType() === 'CURSOR_NOT_NULL') {
+          <div class="form-grid form-grid--type">
+            <div class="form-row">
+              <label class="form-label" for="dataTypeBase">Tipo *</label>
+              <select
+                id="dataTypeBase"
+                class="form-input"
+                [ngModel]="form().dataTypeBase"
+                (ngModelChange)="updateField('dataTypeBase', $event)"
+              >
+                @for (type of baseTypes; track type) {
+                  <option [value]="type">{{ type }}</option>
+                }
+              </select>
+            </div>
+            @if (requiresSize(form().dataTypeBase)) {
+              <div class="form-row">
+                <label class="form-label" for="dataTypeSize">
+                  Tamanho@if (sizeIsRequired(form().dataTypeBase)) { *}
+                </label>
+                <input
+                  id="dataTypeSize"
+                  class="form-input"
+                  type="text"
+                  [placeholder]="form().dataTypeBase === 'NUMBER' ? 'Ex: 10 ou 10,2' : 'Ex: 50'"
+                  [ngModel]="form().dataTypeSize"
+                  (ngModelChange)="updateField('dataTypeSize', $event)"
+                />
+              </div>
+            }
+          </div>
+
+          <div class="form-grid form-grid--2">
               <div class="form-row">
                 <label class="form-label" for="tableName">Tabela *</label>
                 <input
@@ -101,7 +174,225 @@
           }
         }
 
-        @if (currentScriptType() === 'ADD_COLUMN' || currentScriptType() === 'CURSOR_NOT_NULL') {
+        @if (currentScriptType() === 'ADD_COLUMN') {
+          <div class="columns-list">
+            <div class="columns-list__header">
+              <h3>Colunas a adicionar</h3>
+              <button type="button" class="btn btn--secondary btn--small" (click)="addAddColumn()">
+                + Adicionar coluna
+              </button>
+            </div>
+            <p class="form-hint columns-list__intro">
+              Um único script por tabela, separado por <code>/</code>. Schema <strong>INFOSAUDE</strong>,
+              PK <code>PK_</code> + coluna, FK <code>FK_</code> + tabela + sequência, CHECK <code>CKC_</code> + tabela + sequência. Máx. 30 caracteres.
+            </p>
+
+            <div class="form-row">
+              <label class="form-check">
+                <input
+                  type="checkbox"
+                  [ngModel]="form().createSequence"
+                  (ngModelChange)="updateField('createSequence', $event)"
+                />
+                Criar sequence no padrão (<code>SEQ_</code> + nome da tabela)
+              </label>
+              @if (form().createSequence) {
+                <span class="form-hint">
+                  Nome gerado: <code>{{ getSuggestedSequenceName() }}</code>
+                  (CREATE SEQUENCE, SYNONYM e GRANT SELECT)
+                </span>
+              }
+            </div>
+
+            <div class="table-wrap col-grid">
+              <table class="col-grid__table">
+                <thead>
+                  <tr>
+                    <th class="col-grid__num">#</th>
+                    <th>Nome *</th>
+                    <th>Tipo *</th>
+                    <th class="col-grid__size">Tam.</th>
+                    <th class="col-grid__default">Default</th>
+                    <th class="col-grid__nn" title="NOT NULL">NN</th>
+                    <th>Comentário *</th>
+                    <th class="col-grid__constraint">Restrição</th>
+                    <th class="col-grid__actions"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (col of form().addColumns; track $index) {
+                    <tr>
+                      <td class="col-grid__num">{{ $index + 1 }}</td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="IN_OPERACAO"
+                          [ngModel]="col.name"
+                          (ngModelChange)="updateAddColumn($index, 'name', $event)"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          class="col-grid__input"
+                          [ngModel]="col.dataTypeBase"
+                          (ngModelChange)="updateAddColumn($index, 'dataTypeBase', $event)"
+                        >
+                          @for (type of baseTypes; track type) {
+                            <option [value]="type">{{ type }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td class="col-grid__size">
+                        @if (requiresSize(col.dataTypeBase)) {
+                          <input
+                            class="col-grid__input"
+                            type="text"
+                            [placeholder]="col.dataTypeBase === 'NUMBER' ? '10' : '50'"
+                            [ngModel]="col.dataTypeSize"
+                            (ngModelChange)="updateAddColumn($index, 'dataTypeSize', $event)"
+                          />
+                        } @else {
+                          <span class="col-grid__na">—</span>
+                        }
+                      </td>
+                      <td class="col-grid__default">
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="—"
+                          [ngModel]="col.defaultValue"
+                          (ngModelChange)="updateAddColumn($index, 'defaultValue', $event)"
+                        />
+                      </td>
+                      <td class="col-grid__nn">
+                        <input
+                          type="checkbox"
+                          [ngModel]="col.notNull"
+                          (ngModelChange)="updateAddColumn($index, 'notNull', $event)"
+                          [disabled]="col.constraintType === 'PK'"
+                          title="NOT NULL"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="Comentário da coluna"
+                          [ngModel]="col.comment"
+                          (ngModelChange)="updateAddColumn($index, 'comment', $event)"
+                        />
+                      </td>
+                      <td class="col-grid__constraint">
+                        <select
+                          class="col-grid__input"
+                          [ngModel]="col.constraintType"
+                          (ngModelChange)="updateAddColumn($index, 'constraintType', $event)"
+                        >
+                          <option value="NONE">Nenhuma</option>
+                          <option value="PK">PK</option>
+                          <option value="FK">FK</option>
+                          <option value="CHECK">CHECK</option>
+                        </select>
+                        @if (col.constraintType === 'NONE' && col.notNull) {
+                          <span class="col-grid__rule-hint col-grid__rule-hint--warn">
+                            NOT NULL sem DEFAULT → Cursor (NOT NULL)
+                          </span>
+                        }
+                      </td>
+                      <td class="col-grid__actions">
+                        @if (form().addColumns.length > 1) {
+                          <button
+                            type="button"
+                            class="btn btn--text btn--small"
+                            (click)="removeAddColumn($index)"
+                            title="Remover coluna"
+                          >
+                            ✕
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                    @if (col.constraintType === 'FK') {
+                      <tr class="col-grid__fk-row">
+                        <td></td>
+                        <td colspan="8">
+                          <div class="col-grid__fk-fields">
+                            <label class="col-grid__fk-field">
+                              <span>Seq. FK</span>
+                              <input
+                                class="col-grid__input col-grid__input--xs"
+                                type="number"
+                                min="1"
+                                [ngModel]="col.fkSequence"
+                                (ngModelChange)="updateAddColumn($index, 'fkSequence', +$event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field">
+                              <span>Tabela ref. *</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="TABELA"
+                                [ngModel]="col.fkRefTable"
+                                (ngModelChange)="updateAddColumn($index, 'fkRefTable', $event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field">
+                              <span>Coluna ref. *</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="CD_CAMPO"
+                                [ngModel]="col.fkRefColumn"
+                                (ngModelChange)="updateAddColumn($index, 'fkRefColumn', $event)"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                    @if (col.constraintType === 'CHECK') {
+                      <tr class="col-grid__fk-row">
+                        <td></td>
+                        <td colspan="8">
+                          <div class="col-grid__fk-fields">
+                            <label class="col-grid__fk-field">
+                              <span>Seq. CKC</span>
+                              <input
+                                class="col-grid__input col-grid__input--xs"
+                                type="number"
+                                min="1"
+                                [ngModel]="col.ckcSequence"
+                                (ngModelChange)="updateAddColumn($index, 'ckcSequence', +$event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field col-grid__fk-field--wide">
+                              <span>Expressão CHECK * · {{ getCkcConstraintName(col.ckcSequence) }}</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="IN_OPERACAO IN ('P','C','X')"
+                                [ngModel]="col.ckcExpression"
+                                (ngModelChange)="updateAddColumn($index, 'ckcExpression', $event)"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <ul class="rules-inline">
+              <li>PK aplica NOT NULL automaticamente · FK/PK/CHECK não exigem DEFAULT</li>
+            </ul>
+          </div>
+        }
+
+        @if (currentScriptType() === 'CURSOR_NOT_NULL') {
           <div class="form-grid form-grid--type">
             <div class="form-row">
               <label class="form-label" for="dataTypeBase">Tipo *</label>
@@ -129,70 +420,34 @@
                   [ngModel]="form().dataTypeSize"
                   (ngModelChange)="updateField('dataTypeSize', $event)"
                 />
-                <span class="form-hint">
-                  @if (form().dataTypeBase === 'NUMBER') {
-                    Opcional. Deixe vazio para NUMBER sem precisão.
-                  } @else {
-                    Informe o tamanho do campo.
-                  }
-                </span>
               </div>
             }
           </div>
 
-          @if (currentScriptType() === 'ADD_COLUMN') {
-            <div class="form-grid form-grid--default-null">
-              <div class="form-row">
-                <label class="form-label" for="defaultValue">Valor padrão (opcional)</label>
-                <input
-                  id="defaultValue"
-                  class="form-input"
-                  type="text"
-                  placeholder="Ex: N (aspas adicionadas automaticamente para texto)"
-                  [ngModel]="form().defaultValue"
-                  (ngModelChange)="updateField('defaultValue', $event)"
-                />
-              </div>
-              <div class="form-row form-row--checkbox">
-                <span class="form-label form-label--spacer" aria-hidden="true">&nbsp;</span>
-                <label class="form-check form-check--field">
-                  <input
-                    type="checkbox"
-                    [ngModel]="form().notNull"
-                    (ngModelChange)="updateField('notNull', $event)"
-                  />
-                  NOT NULL
-                </label>
-              </div>
+          <div class="form-grid form-grid--2">
+            <div class="form-row">
+              <label class="form-label" for="cursorDefaultValue">Valor padrão do Cursor *</label>
+              <input
+                id="cursorDefaultValue"
+                class="form-input"
+                type="text"
+                placeholder="Ex: N (aspas adicionadas automaticamente para texto)"
+                [ngModel]="form().cursorDefaultValue"
+                (ngModelChange)="updateField('cursorDefaultValue', $event)"
+              />
             </div>
-          }
-
-          @if (currentScriptType() === 'CURSOR_NOT_NULL') {
-            <div class="form-grid form-grid--2">
-              <div class="form-row">
-                <label class="form-label" for="cursorDefaultValue">Valor padrão do Cursor *</label>
-                <input
-                  id="cursorDefaultValue"
-                  class="form-input"
-                  type="text"
-                  placeholder="Ex: N (aspas adicionadas automaticamente para texto)"
-                  [ngModel]="form().cursorDefaultValue"
-                  (ngModelChange)="updateField('cursorDefaultValue', $event)"
-                />
-              </div>
-              <div class="form-row">
-                <label class="form-label" for="cursorWhereClause">Cláusula WHERE (opcional)</label>
-                <input
-                  id="cursorWhereClause"
-                  class="form-input"
-                  type="text"
-                  placeholder="Ex: in_virtual IS NULL"
-                  [ngModel]="form().cursorWhereClause"
-                  (ngModelChange)="updateField('cursorWhereClause', $event)"
-                />
-              </div>
+            <div class="form-row">
+              <label class="form-label" for="cursorWhereClause">Cláusula WHERE (opcional)</label>
+              <input
+                id="cursorWhereClause"
+                class="form-input"
+                type="text"
+                placeholder="Ex: in_virtual IS NULL"
+                [ngModel]="form().cursorWhereClause"
+                (ngModelChange)="updateField('cursorWhereClause', $event)"
+              />
             </div>
-          }
+          </div>
 
           <div class="form-row">
             <label class="form-label" for="comment">Comentário do Campo *</label>
@@ -220,6 +475,23 @@
             />
           </div>
 
+          <div class="form-row">
+            <label class="form-check">
+              <input
+                type="checkbox"
+                [ngModel]="form().createSequence"
+                (ngModelChange)="updateField('createSequence', $event)"
+              />
+              Criar sequence no padrão (<code>SEQ_</code> + nome da tabela)
+            </label>
+            @if (form().createSequence) {
+              <span class="form-hint">
+                Nome gerado: <code>{{ getSuggestedSequenceName() }}</code>
+                (CREATE SEQUENCE, SYNONYM e GRANT SELECT)
+              </span>
+            }
+          </div>
+
           <div class="columns-list">
             <div class="columns-list__header">
               <h3>Colunas da Tabela</h3>
@@ -227,77 +499,195 @@
                 + Adicionar coluna
               </button>
             </div>
+            <p class="form-hint columns-list__intro">
+              Schema <strong>INFOSAUDE</strong>, PK <code>PK_</code> + coluna, FK <code>FK_</code> + tabela + sequência. Máx. 30 caracteres.
+            </p>
 
-            @for (col of form().columns; track $index) {
-              <div class="column-item">
-                <div class="column-item__header">
-                  <span>Coluna {{ $index + 1 }}</span>
-                  @if (form().columns.length > 1) {
-                    <button
-                      type="button"
-                      class="btn btn--text btn--small"
-                      (click)="removeColumn($index)"
-                    >
-                      Remover
-                    </button>
+            <div class="table-wrap col-grid">
+              <table class="col-grid__table">
+                <thead>
+                  <tr>
+                    <th class="col-grid__num">#</th>
+                    <th>Nome *</th>
+                    <th>Tipo *</th>
+                    <th class="col-grid__size">Tam.</th>
+                    <th class="col-grid__default">Default</th>
+                    <th class="col-grid__nn" title="NOT NULL">NN</th>
+                    <th>Comentário *</th>
+                    <th class="col-grid__constraint">Restrição</th>
+                    <th class="col-grid__actions"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (col of form().columns; track $index) {
+                    <tr>
+                      <td class="col-grid__num">{{ $index + 1 }}</td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="IN_OPERACAO"
+                          [ngModel]="col.name"
+                          (ngModelChange)="updateColumn($index, 'name', $event)"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          class="col-grid__input"
+                          [ngModel]="col.dataTypeBase"
+                          (ngModelChange)="updateColumn($index, 'dataTypeBase', $event)"
+                        >
+                          @for (type of baseTypes; track type) {
+                            <option [value]="type">{{ type }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td class="col-grid__size">
+                        @if (requiresSize(col.dataTypeBase)) {
+                          <input
+                            class="col-grid__input"
+                            type="text"
+                            [placeholder]="col.dataTypeBase === 'NUMBER' ? '10' : '50'"
+                            [ngModel]="col.dataTypeSize"
+                            (ngModelChange)="updateColumn($index, 'dataTypeSize', $event)"
+                          />
+                        } @else {
+                          <span class="col-grid__na">—</span>
+                        }
+                      </td>
+                      <td class="col-grid__default">
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="—"
+                          [ngModel]="col.defaultValue"
+                          (ngModelChange)="updateColumn($index, 'defaultValue', $event)"
+                        />
+                      </td>
+                      <td class="col-grid__nn">
+                        <input
+                          type="checkbox"
+                          [ngModel]="col.notNull"
+                          (ngModelChange)="updateColumn($index, 'notNull', $event)"
+                          [disabled]="col.constraintType === 'PK'"
+                          title="NOT NULL"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="Comentário da coluna"
+                          [ngModel]="col.comment"
+                          (ngModelChange)="updateColumn($index, 'comment', $event)"
+                        />
+                      </td>
+                      <td class="col-grid__constraint">
+                        <select
+                          class="col-grid__input"
+                          [ngModel]="col.constraintType"
+                          (ngModelChange)="updateColumn($index, 'constraintType', $event)"
+                        >
+                          <option value="NONE">Nenhuma</option>
+                          <option value="PK">PK</option>
+                          <option value="FK">FK</option>
+                          <option value="CHECK">CHECK</option>
+                        </select>
+                        @if (col.constraintType === 'NONE' && col.notNull) {
+                          <span class="col-grid__rule-hint col-grid__rule-hint--warn">
+                            NOT NULL sem DEFAULT → Cursor (NOT NULL)
+                          </span>
+                        }
+                      </td>
+                      <td class="col-grid__actions">
+                        @if (form().columns.length > 1) {
+                          <button
+                            type="button"
+                            class="btn btn--text btn--small"
+                            (click)="removeColumn($index)"
+                            title="Remover coluna"
+                          >
+                            ✕
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                    @if (col.constraintType === 'FK') {
+                      <tr class="col-grid__fk-row">
+                        <td></td>
+                        <td colspan="8">
+                          <div class="col-grid__fk-fields">
+                            <label class="col-grid__fk-field">
+                              <span>Seq. FK</span>
+                              <input
+                                class="col-grid__input col-grid__input--xs"
+                                type="number"
+                                min="1"
+                                [ngModel]="col.fkSequence"
+                                (ngModelChange)="updateColumn($index, 'fkSequence', +$event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field">
+                              <span>Tabela ref. *</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="TABELA"
+                                [ngModel]="col.fkRefTable"
+                                (ngModelChange)="updateColumn($index, 'fkRefTable', $event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field">
+                              <span>Coluna ref. *</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="CD_CAMPO"
+                                [ngModel]="col.fkRefColumn"
+                                (ngModelChange)="updateColumn($index, 'fkRefColumn', $event)"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                    @if (col.constraintType === 'CHECK') {
+                      <tr class="col-grid__fk-row">
+                        <td></td>
+                        <td colspan="8">
+                          <div class="col-grid__fk-fields">
+                            <label class="col-grid__fk-field">
+                              <span>Seq. CKC</span>
+                              <input
+                                class="col-grid__input col-grid__input--xs"
+                                type="number"
+                                min="1"
+                                [ngModel]="col.ckcSequence"
+                                (ngModelChange)="updateColumn($index, 'ckcSequence', +$event)"
+                              />
+                            </label>
+                            <label class="col-grid__fk-field col-grid__fk-field--wide">
+                              <span>Expressão CHECK * · {{ getCkcConstraintName(col.ckcSequence) }}</span>
+                              <input
+                                class="col-grid__input"
+                                type="text"
+                                placeholder="IN_OPERACAO IN ('P','C','X')"
+                                [ngModel]="col.ckcExpression"
+                                (ngModelChange)="updateColumn($index, 'ckcExpression', $event)"
+                              />
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    }
                   }
-                </div>
-                <div class="form-grid form-grid--column">
-                  <div class="form-row">
-                    <label class="form-label">Nome *</label>
-                    <input
-                      class="form-input"
-                      type="text"
-                      [ngModel]="col.name"
-                      (ngModelChange)="updateColumn($index, 'name', $event)"
-                    />
-                  </div>
-                  <div class="form-row">
-                    <label class="form-label">Tipo *</label>
-                    <select
-                      class="form-input"
-                      [ngModel]="col.dataTypeBase"
-                      (ngModelChange)="updateColumn($index, 'dataTypeBase', $event)"
-                    >
-                      @for (type of baseTypes; track type) {
-                        <option [value]="type">{{ type }}</option>
-                      }
-                    </select>
-                  </div>
-                  @if (requiresSize(col.dataTypeBase)) {
-                    <div class="form-row">
-                      <label class="form-label">
-                        Tamanho@if (sizeIsRequired(col.dataTypeBase)) { *}
-                      </label>
-                      <input
-                        class="form-input"
-                        type="text"
-                        [placeholder]="col.dataTypeBase === 'NUMBER' ? 'Ex: 10 ou 10,2' : 'Ex: 50'"
-                        [ngModel]="col.dataTypeSize"
-                        (ngModelChange)="updateColumn($index, 'dataTypeSize', $event)"
-                      />
-                    </div>
-                  }
-                  <label class="form-check form-check--grid">
-                    <input
-                      type="checkbox"
-                      [ngModel]="col.notNull"
-                      (ngModelChange)="updateColumn($index, 'notNull', $event)"
-                    />
-                    NOT NULL
-                  </label>
-                </div>
-                <div class="form-row">
-                  <label class="form-label">Comentário *</label>
-                  <input
-                    class="form-input"
-                    type="text"
-                    [ngModel]="col.comment"
-                    (ngModelChange)="updateColumn($index, 'comment', $event)"
-                  />
-                </div>
-              </div>
-            }
+                </tbody>
+              </table>
+            </div>
+
+            <ul class="rules-inline">
+              <li>PK aplica NOT NULL automaticamente · FK/PK/CHECK não exigem DEFAULT</li>
+            </ul>
           </div>
         }
 
@@ -312,7 +702,7 @@
               [ngModel]="form().pkColumns"
               (ngModelChange)="updateField('pkColumns', $event)"
             />
-            <span class="form-hint">Separar colunas por vírgula. Nome gerado: PK_ + nome da tabela.</span>
+            <span class="form-hint">Separar colunas por vírgula. Nome gerado: PK_ + nome da(s) coluna(s).</span>
           </div>
         }
 
@@ -377,6 +767,7 @@
                 [ngModel]="form().ckcSequence"
                 (ngModelChange)="updateField('ckcSequence', +$event)"
               />
+              <span class="form-hint">Nome: <code>{{ getCkcConstraintName(form().ckcSequence) }}</code></span>
             </div>
             <div class="form-row">
               <label class="form-label" for="ckcExpression">Expressão CHECK *</label>
@@ -434,13 +825,6 @@
         }
         </div>
       </div>
-
-      <div class="card__footer">
-        <button type="button" class="btn btn--secondary" (click)="resetForm()">Limpar</button>
-        <button type="button" class="btn btn--primary" (click)="generateScript()">
-          Gerar e Baixar .sql
-        </button>
-      </div>
     </section>
 
     @if (showPreview()) {
@@ -450,9 +834,6 @@
           <div class="card__header-actions">
             <button type="button" class="btn btn--secondary btn--small" (click)="copyToClipboard()">
               Copiar
-            </button>
-            <button type="button" class="btn btn--primary btn--small" (click)="downloadAgain()">
-              Baixar novamente
             </button>
           </div>
         </div>
@@ -494,4 +875,32 @@
       </div>
     </div>
   </section>
+
+  @if (showLeaveDialog()) {
+    <div class="leave-dialog" role="dialog" aria-modal="true" aria-labelledby="leaveDialogTitle">
+      <div class="leave-dialog__backdrop" (click)="onLeaveDialogCancel()"></div>
+      <div class="leave-dialog__panel">
+        <h2 id="leaveDialogTitle" class="leave-dialog__title">Alterações não salvas</h2>
+        <p class="leave-dialog__text">
+          Você está no cadastro com alterações pendentes. Deseja salvar antes de sair?
+        </p>
+        <div class="leave-dialog__actions">
+          <button type="button" class="btn btn--secondary" (click)="onLeaveDialogCancel()">
+            Continuar cadastro
+          </button>
+          <button type="button" class="btn btn--secondary" (click)="onLeaveDialogDiscard()">
+            Sair sem salvar
+          </button>
+          <button
+            type="button"
+            class="btn btn--primary"
+            (click)="onLeaveDialogSave()"
+            [disabled]="saving() || !storageAvailable()"
+          >
+            {{ saving() ? 'Salvando...' : 'Salvar e sair' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

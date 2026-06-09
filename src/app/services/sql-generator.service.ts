@@ -1,14 +1,18 @@
 import { Injectable } from '@angular/core';
 import {
+  buildCkcConstraintName,
+  buildFkConstraintName,
+  formatConstraintSequence,
+  MAX_OBJECT_NAME_LENGTH
+} from '../models/constraint-name.util';
+import {
   buildOracleDataType,
   formatOracleDefaultValue,
   sizeIsRequired
 } from '../models/oracle-type.util';
-import { ScriptFormData, TableColumn } from '../models/script-form.model';
-import { ScriptType } from '../models/script-types';
+import { ScriptFormData, AddColumnEntry, TableColumn } from '../models/script-form.model';
 
 const SCHEMA = 'INFOSAUDE';
-const MAX_OBJECT_NAME_LENGTH = 30;
 
 export interface ValidationError {
   field: string;
@@ -35,7 +39,7 @@ export class SqlGeneratorService {
 
     switch (form.scriptType) {
       case 'ADD_COLUMN':
-        commands = this.buildAddColumn(form, table, column);
+        commands = this.buildAddColumns(form, table);
         break;
       case 'CREATE_TABLE':
         commands = this.buildCreateTable(form, table);
@@ -70,9 +74,18 @@ export class SqlGeneratorService {
     }
 
     const sql = this.joinCommands(commands);
-    const fileName = this.buildFileName(form, table, column);
+    const fileSuffix =
+      form.scriptType === 'ADD_COLUMN' ? this.resolveAddColumnFileSuffix(form) : column;
+    const fileName = this.buildFileName(form, table, fileSuffix);
 
     return { sql, fileName, errors: [] };
+  }
+
+  private resolveAddColumnFileSuffix(form: ScriptFormData): string {
+    if (form.addColumns.length === 1) {
+      return this.normalize(form.addColumns[0].name);
+    }
+    return this.normalize(form.tableName);
   }
 
   private validate(form: ScriptFormData): ValidationError[] {
@@ -88,7 +101,34 @@ export class SqlGeneratorService {
 
     this.validateObjectName(form.tableName, 'tableName', 'Tabela', errors);
 
-    if (['ADD_COLUMN', 'CURSOR_NOT_NULL'].includes(form.scriptType)) {
+    if (form.scriptType === 'ADD_COLUMN') {
+      if (form.addColumns.length === 0) {
+        errors.push({ field: 'addColumns', message: 'Adicione ao menos uma coluna.' });
+      }
+      form.addColumns.forEach((col, index) => {
+        this.validateAddColumnEntry(col, index, errors);
+      });
+
+      const names = form.addColumns.map((col) => this.normalize(col.name)).filter(Boolean);
+      if (names.length !== new Set(names).size) {
+        errors.push({ field: 'addColumns', message: 'Existem colunas com o mesmo nome.' });
+      }
+
+      if (form.tableName.trim()) {
+        this.validateColumnConstraints(form.addColumns, this.normalize(form.tableName), errors, 'addColumns');
+      }
+    }
+
+    if (
+      (form.scriptType === 'CREATE_TABLE' || form.scriptType === 'ADD_COLUMN') &&
+      form.createSequence &&
+      form.tableName.trim()
+    ) {
+      const seqName = this.truncateName(`SEQ_${this.normalize(form.tableName)}`);
+      this.validateObjectName(seqName, 'createSequence', 'Sequence', errors);
+    }
+
+    if (form.scriptType === 'CURSOR_NOT_NULL') {
       if (!form.columnName.trim()) {
         errors.push({ field: 'columnName', message: 'Informe o nome do campo.' });
       }
@@ -104,22 +144,17 @@ export class SqlGeneratorService {
         errors.push({ field: 'columns', message: 'Adicione ao menos uma coluna.' });
       }
       form.columns.forEach((col, index) => {
-        if (!col.name.trim()) {
-          errors.push({ field: `column_${index}`, message: `Coluna ${index + 1}: informe o nome.` });
-        }
-        this.validateObjectName(col.name, `column_${index}`, `Coluna ${index + 1}`, errors);
-        this.validateDataType(
-          col.dataTypeBase,
-          col.dataTypeSize,
-          `column_type_base_${index}`,
-          `column_type_size_${index}`,
-          `Coluna ${index + 1}`,
-          errors
-        );
-        if (!col.comment.trim()) {
-          errors.push({ field: `column_comment_${index}`, message: `Coluna ${index + 1}: informe o comentário.` });
-        }
+        this.validateAddColumnEntry(col, index, errors);
       });
+
+      const names = form.columns.map((col) => this.normalize(col.name)).filter(Boolean);
+      if (names.length !== new Set(names).size) {
+        errors.push({ field: 'columns', message: 'Existem colunas com o mesmo nome.' });
+      }
+
+      if (form.tableName.trim()) {
+        this.validateColumnConstraints(form.columns, this.normalize(form.tableName), errors, 'columns');
+      }
     }
 
     if (form.scriptType === 'PRIMARY_KEY' && !form.pkColumns.trim()) {
@@ -199,24 +234,246 @@ export class SqlGeneratorService {
     }
   }
 
-  private buildAddColumn(form: ScriptFormData, table: string, column: string): string[] {
-    const commands: string[] = [];
-    const dataType = this.resolveDataType(form.dataTypeBase, form.dataTypeSize);
-    let alter = `ALTER TABLE ${SCHEMA}.${table} ADD ${column} ${dataType}`;
+  private validateAddColumnEntry(col: AddColumnEntry, index: number, errors: ValidationError[]): void {
+    const label = `Coluna ${index + 1}`;
 
-    if (form.defaultValue.trim()) {
-      alter += ` DEFAULT ${formatOracleDefaultValue(form.dataTypeBase, form.defaultValue)}`;
+    if (!col.name.trim()) {
+      errors.push({ field: `add_column_${index}`, message: `${label}: informe o nome.` });
     }
-    if (form.notNull) {
-      alter += ' NOT NULL';
-    }
-
-    commands.push(alter);
-    commands.push(
-      `COMMENT ON COLUMN ${SCHEMA}.${table}.${column} IS '${this.escapeComment(form.comment)}'`
+    this.validateObjectName(col.name, `add_column_${index}`, label, errors);
+    this.validateDataType(
+      col.dataTypeBase,
+      col.dataTypeSize,
+      `add_column_type_base_${index}`,
+      `add_column_type_size_${index}`,
+      label,
+      errors
     );
+    if (!col.comment.trim()) {
+      errors.push({ field: `add_column_comment_${index}`, message: `${label}: informe o comentário.` });
+    }
+
+    if (col.constraintType === 'PK' && !col.notNull) {
+      errors.push({
+        field: `add_column_pk_${index}`,
+        message: `${label}: coluna PK deve ser NOT NULL (regra Cadastros Gerais).`
+      });
+    }
+
+    if (col.constraintType === 'PK' && col.pkConstraintName.trim()) {
+      this.validateObjectName(
+        col.pkConstraintName,
+        `add_column_pk_name_${index}`,
+        `${label} (nome PK)`,
+        errors
+      );
+    }
+
+    if (col.notNull && !col.defaultValue.trim() && col.constraintType === 'NONE') {
+      errors.push({
+        field: `add_column_notnull_${index}`,
+        message: `${label}: NOT NULL sem DEFAULT — use o tipo de script Cursor (NOT NULL) se a tabela já tiver dados.`
+      });
+    }
+
+    if (col.constraintType === 'FK') {
+      if (!col.fkRefTable.trim()) {
+        errors.push({ field: `add_column_fk_table_${index}`, message: `${label}: informe a tabela de referência da FK.` });
+      }
+      if (!col.fkRefColumn.trim()) {
+        errors.push({ field: `add_column_fk_col_${index}`, message: `${label}: informe a coluna de referência da FK.` });
+      }
+      this.validateObjectName(col.fkRefTable, `add_column_fk_table_${index}`, `${label} (tabela FK)`, errors);
+      this.validateObjectName(col.fkRefColumn, `add_column_fk_col_${index}`, `${label} (coluna FK)`, errors);
+    }
+
+    if (col.constraintType === 'CHECK' && !col.ckcExpression.trim()) {
+      errors.push({
+        field: `add_column_ckc_${index}`,
+        message: `${label}: informe a expressão do CHECK.`
+      });
+    }
+  }
+
+  private validateColumnConstraints(
+    columns: AddColumnEntry[],
+    table: string,
+    errors: ValidationError[],
+    fieldPrefix: string
+  ): void {
+    const pkColumns = columns.filter((col) => col.constraintType === 'PK');
+    const fkColumns = columns.filter((col) => col.constraintType === 'FK');
+    const checkColumns = columns.filter((col) => col.constraintType === 'CHECK');
+
+    if (pkColumns.length > 0) {
+      const pkColumnNames = pkColumns.map((col) => this.normalize(col.name)).filter(Boolean);
+      const pkName = this.resolvePkConstraintName(pkColumns, pkColumnNames);
+      this.validateConstraintName(pkName, 'PK', `${fieldPrefix}_pk`, errors);
+    }
+
+    const usedFkSequences = new Set<number>();
+    fkColumns.forEach((col) => {
+      const index = columns.indexOf(col);
+      const label = `Coluna ${index + 1}`;
+
+      if (usedFkSequences.has(col.fkSequence)) {
+        errors.push({
+          field: `${fieldPrefix}_fk_seq_${index}`,
+          message: `${label}: sequência FK ${col.fkSequence} já utilizada (FK deve terminar com numeral único).`
+        });
+      }
+      usedFkSequences.add(col.fkSequence);
+
+      const fkName = buildFkConstraintName(table, col.fkSequence);
+      this.validateConstraintName(fkName, 'FK', `${fieldPrefix}_fk_${index}`, errors);
+    });
+
+    const usedCkcSequences = new Set<number>();
+    checkColumns.forEach((col) => {
+      const index = columns.indexOf(col);
+      const label = `Coluna ${index + 1}`;
+
+      if (usedCkcSequences.has(col.ckcSequence)) {
+        errors.push({
+          field: `${fieldPrefix}_ckc_seq_${index}`,
+          message: `${label}: sequência CKC ${formatConstraintSequence(col.ckcSequence)} já utilizada (CKC deve terminar com numeral único).`
+        });
+      }
+      usedCkcSequences.add(col.ckcSequence);
+
+      const ckcName = buildCkcConstraintName(table, col.ckcSequence);
+      this.validateConstraintName(ckcName, 'CKC', `${fieldPrefix}_ckc_${index}`, errors);
+    });
+  }
+
+  private validateConstraintName(
+    name: string,
+    type: 'PK' | 'FK' | 'CKC',
+    field: string,
+    errors: ValidationError[]
+  ): void {
+    if (name.length > MAX_OBJECT_NAME_LENGTH) {
+      errors.push({
+        field,
+        message: `Nome ${name} ultrapassa ${MAX_OBJECT_NAME_LENGTH} caracteres. Encurte o nome da coluna ou ajuste a sequência.`
+      });
+    }
+
+    if (type === 'PK' && !name.startsWith('PK_')) {
+      errors.push({ field, message: 'Primary Key deve iniciar com PK_.' });
+    }
+
+    if (type === 'FK') {
+      if (!name.startsWith('FK_')) {
+        errors.push({ field, message: 'Foreign Key deve iniciar com FK_.' });
+      }
+      if (!/_\d{2,}$/.test(name)) {
+        errors.push({
+          field,
+          message: `Foreign Key ${name} deve terminar com sequencial numérico de 2 dígitos (ex.: _01).`
+        });
+      }
+    }
+
+    if (type === 'CKC') {
+      if (!name.startsWith('CKC_')) {
+        errors.push({ field, message: 'Check Constraint deve iniciar com CKC_.' });
+      }
+      if (!/_\d{2,}$/.test(name)) {
+        errors.push({
+          field,
+          message: `Check Constraint ${name} deve terminar com sequencial numérico de 2 dígitos (ex.: _01).`
+        });
+      }
+    }
+  }
+
+  private buildAddColumns(form: ScriptFormData, table: string): string[] {
+    const commands: string[] = [];
+
+    for (const col of form.addColumns) {
+      const column = this.normalize(col.name);
+      const dataType = this.resolveDataType(col.dataTypeBase, col.dataTypeSize);
+      let alter = `ALTER TABLE ${SCHEMA}.${table} ADD ${column} ${dataType}`;
+
+      if (col.defaultValue.trim()) {
+        alter += ` DEFAULT ${formatOracleDefaultValue(col.dataTypeBase, col.defaultValue)}`;
+      }
+      if (col.notNull) {
+        alter += ' NOT NULL';
+      }
+
+      commands.push(alter);
+      commands.push(
+        `COMMENT ON COLUMN ${SCHEMA}.${table}.${column} IS '${this.escapeComment(col.comment)}'`
+      );
+    }
+
+    const pkEntries = form.addColumns.filter((col) => col.constraintType === 'PK');
+    const pkColumns = pkEntries.map((col) => this.normalize(col.name)).filter(Boolean);
+
+    if (pkColumns.length > 0) {
+      const pkName = this.resolvePkConstraintName(pkEntries, pkColumns);
+      commands.push(
+        `ALTER TABLE ${SCHEMA}.${table} ADD CONSTRAINT ${pkName}\nPRIMARY KEY (${pkColumns.join(', ')})`
+      );
+    }
+
+    for (const col of form.addColumns.filter((entry) => entry.constraintType === 'FK')) {
+      commands.push(...this.buildFkConstraintCommand(col, table));
+    }
+
+    for (const col of form.addColumns.filter((entry) => entry.constraintType === 'CHECK')) {
+      commands.push(...this.buildCheckConstraintCommand(col, table));
+    }
+
+    if (form.createSequence) {
+      commands.push(...this.buildSequenceCommands(this.truncateName(`SEQ_${table}`)));
+    }
 
     return commands;
+  }
+
+  private buildCheckConstraintCommand(col: AddColumnEntry, table: string): string[] {
+    return this.buildCheckConstraintCommands(table, col.ckcSequence, col.ckcExpression);
+  }
+
+  private buildCheckConstraintCommands(table: string, sequence: number, expression: string): string[] {
+    const ckcName = buildCkcConstraintName(table, sequence);
+    return [
+      `ALTER TABLE ${SCHEMA}.${table}\nADD CONSTRAINT ${ckcName} CHECK (${expression.trim()})`
+    ];
+  }
+
+  private buildFkConstraintCommand(col: AddColumnEntry, table: string): string[] {
+    const column = this.normalize(col.name);
+    const fkName = buildFkConstraintName(table, col.fkSequence);
+    const refTable = this.normalize(col.fkRefTable);
+    const refColumn = this.normalize(col.fkRefColumn);
+
+    return [
+      `ALTER TABLE ${SCHEMA}.${table} ADD CONSTRAINT ${fkName} FOREIGN KEY (${column})\nREFERENCES ${SCHEMA}.${refTable} (${refColumn})`
+    ];
+  }
+
+  private appendPkAndFkCommands(commands: string[], columns: AddColumnEntry[], table: string): void {
+    const pkEntries = columns.filter((col) => col.constraintType === 'PK');
+    const pkColumns = pkEntries.map((col) => this.normalize(col.name)).filter(Boolean);
+
+    if (pkColumns.length > 0) {
+      const pkName = this.resolvePkConstraintName(pkEntries, pkColumns);
+      commands.push(
+        `ALTER TABLE ${SCHEMA}.${table} ADD CONSTRAINT ${pkName}\nPRIMARY KEY (${pkColumns.join(', ')})`
+      );
+    }
+
+    for (const col of columns.filter((entry) => entry.constraintType === 'FK')) {
+      commands.push(...this.buildFkConstraintCommand(col, table));
+    }
+
+    for (const col of columns.filter((entry) => entry.constraintType === 'CHECK')) {
+      commands.push(...this.buildCheckConstraintCommand(col, table));
+    }
   }
 
   private buildCreateTable(form: ScriptFormData, table: string): string[] {
@@ -246,12 +503,21 @@ export class SqlGeneratorService {
       );
     });
 
+    this.appendPkAndFkCommands(commands, form.columns, table);
+
+    if (form.createSequence) {
+      commands.push(...this.buildSequenceCommands(this.truncateName(`SEQ_${table}`)));
+    }
+
     return commands;
   }
 
   private formatColumnDefinition(col: TableColumn): string {
     const dataType = this.resolveDataType(col.dataTypeBase, col.dataTypeSize);
     let def = `${this.normalize(col.name)} ${dataType}`;
+    if (col.defaultValue.trim()) {
+      def += ` DEFAULT ${formatOracleDefaultValue(col.dataTypeBase, col.defaultValue)}`;
+    }
     if (col.notNull) {
       def += ' NOT NULL';
     }
@@ -266,7 +532,11 @@ export class SqlGeneratorService {
   }
 
   private buildPrimaryKey(form: ScriptFormData, table: string): string[] {
-    const pkName = this.truncateName(`PK_${table}`);
+    const columnNames = form.pkColumns
+      .split(',')
+      .map((col) => this.normalize(col))
+      .filter(Boolean);
+    const pkName = this.buildPkConstraintName(columnNames);
     const columns = this.formatColumnList(form.pkColumns);
     return [
       `ALTER TABLE ${SCHEMA}.${table} ADD CONSTRAINT ${pkName}\nPRIMARY KEY (${columns})`
@@ -274,8 +544,7 @@ export class SqlGeneratorService {
   }
 
   private buildForeignKey(form: ScriptFormData, table: string): string[] {
-    const seq = String(form.fkSequence).padStart(2, '0');
-    const fkName = this.truncateName(`FK_${table}_${seq}`);
+    const fkName = buildFkConstraintName(table, form.fkSequence);
     const columns = this.formatColumnList(form.fkColumns);
     const refTable = this.normalize(form.fkRefTable);
     const refColumns = this.formatColumnList(form.fkRefColumns);
@@ -286,19 +555,19 @@ export class SqlGeneratorService {
   }
 
   private buildCheckConstraint(form: ScriptFormData, table: string): string[] {
-    const seq = String(form.ckcSequence).padStart(2, '0');
-    const ckcName = this.truncateName(`CKC_${table}_${seq}`);
-    return [
-      `ALTER TABLE ${SCHEMA}.${table}\nADD CONSTRAINT ${ckcName} CHECK (${form.ckcExpression.trim()})`
-    ];
+    return this.buildCheckConstraintCommands(table, form.ckcSequence, form.ckcExpression);
   }
 
   private buildSequence(form: ScriptFormData): string[] {
-    const seqName = this.normalize(form.sequenceName);
+    return this.buildSequenceCommands(form.sequenceName);
+  }
+
+  private buildSequenceCommands(seqName: string): string[] {
+    const name = this.normalize(seqName);
     return [
-      `CREATE SEQUENCE ${SCHEMA}.${seqName}\nSTART WITH 1\nMAXVALUE 99999999999\nMINVALUE 1\nINCREMENT BY 1\nNOCYCLE\nNOCACHE`,
-      `CREATE OR REPLACE PUBLIC SYNONYM ${seqName} FOR ${SCHEMA}.${seqName}`,
-      `GRANT SELECT ON ${SCHEMA}.${seqName} TO ROLE_INFOSAUDE`
+      `CREATE SEQUENCE ${SCHEMA}.${name}\nSTART WITH 1\nMAXVALUE 99999999999\nMINVALUE 1\nINCREMENT BY 1\nNOCYCLE\nNOCACHE`,
+      `CREATE OR REPLACE PUBLIC SYNONYM ${name} FOR ${SCHEMA}.${name}`,
+      `GRANT SELECT ON ${SCHEMA}.${name} TO ROLE_INFOSAUDE`
     ];
   }
 
@@ -374,6 +643,33 @@ export class SqlGeneratorService {
     return normalized.length <= MAX_OBJECT_NAME_LENGTH
       ? normalized
       : normalized.substring(0, MAX_OBJECT_NAME_LENGTH);
+  }
+
+  private buildPkConstraintName(columnNames: string[]): string {
+    if (columnNames.length === 0) {
+      return 'PK_COLUNA';
+    }
+
+    if (columnNames.length === 1) {
+      return this.truncateName(`PK_${columnNames[0]}`);
+    }
+
+    return this.truncateName(`PK_${columnNames.join('_')}`);
+  }
+
+  private resolvePkConstraintName(
+    pkEntries: AddColumnEntry[],
+    pkColumnNames: string[]
+  ): string {
+    const customName = pkEntries
+      .map((entry) => entry.pkConstraintName.trim())
+      .find(Boolean);
+
+    if (customName) {
+      return this.truncateName(customName);
+    }
+
+    return this.buildPkConstraintName(pkColumnNames);
   }
 
   private escapeComment(comment: string): string {

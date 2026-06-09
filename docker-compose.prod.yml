@@ -5,8 +5,9 @@
 # 3. docker compose -f docker-compose.prod.yml pull
 # 4. docker compose -f docker-compose.prod.yml up -d
 #
-# Atualizar versão:
-#   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+# Atualizar versão (obrigatório: frontend + api):
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d --force-recreate
 
 services:
   vox-script-salux:

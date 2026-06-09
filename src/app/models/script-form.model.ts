@@ -1,12 +1,24 @@
 import { ScriptType } from './script-types';
 
-export interface TableColumn {
+export type ColumnConstraintType = 'NONE' | 'PK' | 'FK' | 'CHECK';
+
+export interface AddColumnEntry {
   name: string;
   dataTypeBase: string;
   dataTypeSize: string;
   notNull: boolean;
+  defaultValue: string;
   comment: string;
+  constraintType: ColumnConstraintType;
+  pkConstraintName: string;
+  fkSequence: number;
+  fkRefTable: string;
+  fkRefColumn: string;
+  ckcSequence: number;
+  ckcExpression: string;
 }
+
+export type TableColumn = AddColumnEntry;
 
 export interface ScriptFormData {
   cardNumber: string;
@@ -19,7 +31,9 @@ export interface ScriptFormData {
   defaultValue: string;
   comment: string;
   tableComment: string;
+  createSequence: boolean;
   columns: TableColumn[];
+  addColumns: AddColumnEntry[];
   pkColumns: string;
   fkSequence: number;
   fkColumns: string;
@@ -35,12 +49,24 @@ export interface ScriptFormData {
 }
 
 export function createEmptyColumn(): TableColumn {
+  return createEmptyAddColumn();
+}
+
+export function createEmptyAddColumn(): AddColumnEntry {
   return {
     name: '',
     dataTypeBase: 'VARCHAR2',
     dataTypeSize: '50',
     notNull: false,
-    comment: ''
+    defaultValue: '',
+    comment: '',
+    constraintType: 'NONE',
+    pkConstraintName: '',
+    fkSequence: 1,
+    fkRefTable: '',
+    fkRefColumn: '',
+    ckcSequence: 1,
+    ckcExpression: ''
   };
 }
 
@@ -56,7 +82,9 @@ export function createEmptyFormData(): ScriptFormData {
     defaultValue: '',
     comment: '',
     tableComment: '',
+    createSequence: false,
     columns: [createEmptyColumn()],
+    addColumns: [createEmptyAddColumn()],
     pkColumns: '',
     fkSequence: 1,
     fkColumns: '',

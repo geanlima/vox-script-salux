@@ -1,0 +1,123 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Scripts Salvos</h1>
+    <p class="page-header__desc">
+      Consulte, edite ou exclua scripts gerados anteriormente.
+    </p>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert alert--error" role="alert">{{ errorMessage() }}</div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert alert--success" role="status">{{ successMessage() }}</div>
+  }
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Filtros</h2>
+      <a class="btn btn--primary btn--small" routerLink="/">+ Novo script</a>
+    </div>
+    <div class="card__body">
+      <div class="filters">
+        <div class="form-row">
+          <label class="form-label" for="filterCard">Card</label>
+          <input
+            id="filterCard"
+            class="form-input"
+            type="text"
+            placeholder="Número do card"
+            [ngModel]="filterCard()"
+            (ngModelChange)="filterCard.set($event)"
+          />
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="filterType">Tipo</label>
+          <select
+            id="filterType"
+            class="form-input"
+            [ngModel]="filterType()"
+            (ngModelChange)="filterType.set($event)"
+          >
+            <option value="">Todos</option>
+            @for (type of scriptTypes; track type.value) {
+              <option [value]="type.value">{{ type.label }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-row form-row--grow">
+          <label class="form-label" for="filterQuery">Busca</label>
+          <input
+            id="filterQuery"
+            class="form-input"
+            type="text"
+            placeholder="Arquivo, tabela ou card"
+            [ngModel]="filterQuery()"
+            (ngModelChange)="filterQuery.set($event)"
+          />
+        </div>
+        <div class="filters__actions">
+          <button type="button" class="btn btn--primary" (click)="loadScripts()" [disabled]="!storageAvailable()">
+            Buscar
+          </button>
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()" [disabled]="!storageAvailable()">
+            Limpar
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Registros</h2>
+      <span class="card__hint">{{ scripts().length }} script(s)</span>
+    </div>
+    <div class="card__body card__body--table">
+      @if (loading()) {
+        <p class="empty-state">Carregando...</p>
+      } @else if (!storageAvailable()) {
+        <p class="empty-state">Aguarde o Oracle ficar disponível para habilitar o CRUD de scripts.</p>
+      } @else if (scripts().length === 0) {
+        <p class="empty-state">Nenhum script salvo encontrado.</p>
+      } @else {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Card</th>
+                <th>Tipo</th>
+                <th>Tabela</th>
+                <th>Arquivo</th>
+                <th>Atualizado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of scripts(); track item.id) {
+                <tr>
+                  <td>{{ item.id }}</td>
+                  <td>{{ item.cardNumber }}</td>
+                  <td>{{ scriptTypeLabel(item.scriptType) }}</td>
+                  <td>{{ item.tableName || '—' }}</td>
+                  <td><code>{{ item.fileName }}</code></td>
+                  <td>{{ formatDate(item.updatedAt) }}</td>
+                  <td class="data-table__actions">
+                    <button type="button" class="btn btn--text btn--small" (click)="editScript(item.id)">
+                      Editar
+                    </button>
+                    <button type="button" class="btn btn--text btn--small btn--danger" (click)="deleteScript(item)">
+                      Excluir
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </section>
+</div>

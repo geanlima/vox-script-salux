@@ -25,7 +25,7 @@ Formulário para montar scripts Oracle com:
 | Adicionar Coluna | `ALTER TABLE` + `COMMENT ON COLUMN` |
 | Criar Tabela | `CREATE TABLE`, `SYNONYM`, `GRANT`, `COMMENT ON` |
 | Excluir Tabela | `DROP TABLE` + `DROP SYNONYM` |
-| Primary Key | `PK_` + nome da tabela |
+| Primary Key | `PK_` + nome da coluna |
 | Foreign Key | `FK_` + tabela + sequência |
 | Check Constraint | `CKC_` + tabela + sequência |
 | Sequence | `CREATE SEQUENCE`, `SYNONYM`, `GRANT` |

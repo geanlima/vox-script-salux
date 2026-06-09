@@ -83,6 +83,20 @@ export async function closeOraclePool() {
   }
 }
 
+export async function withOracleConnection(fn) {
+  if (!pool) {
+    await initOraclePool();
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    return await fn(connection);
+  } finally {
+    await connection.close();
+  }
+}
+
 function getLanguageFlag(sql) {
   const upper = sql.trim().toUpperCase();
 
