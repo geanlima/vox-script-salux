@@ -9,6 +9,8 @@ export interface SavedScriptSummary {
   fileName: string;
   createdAt: string;
   updatedAt: string;
+  userId: number | null;
+  ownerName: string | null;
 }
 
 export interface SavedScript extends SavedScriptSummary {

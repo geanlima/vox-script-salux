@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { initScriptStorageSchema, isScriptStorageReady } from './db/oracle-scripts.js';
+import { initUserSchema } from './db/oracle-users.js';
 import {
   closeOraclePool,
   isOracleConfigured,
@@ -8,6 +9,7 @@ import {
   prevalidateScript,
   waitForOraclePool
 } from './oracle-validator.js';
+import authRouter from './routes/auth.js';
 import scriptsRouter from './routes/scripts.js';
 
 const app = express();
@@ -32,6 +34,7 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
+app.use('/api/auth', authRouter);
 app.use('/api/scripts', scriptsRouter);
 
 app.post('/api/prevalidate', async (req, res) => {
@@ -96,8 +99,9 @@ const server = app.listen(port, async () => {
 
   try {
     await waitForOraclePool();
+    await initUserSchema();
     await initScriptStorageSchema();
-    console.log('Pool Oracle inicializado (validação + armazenamento de scripts).');
+    console.log('Pool Oracle inicializado (validação + usuários + armazenamento de scripts).');
   } catch (error) {
     console.error('Falha ao inicializar Oracle:', error.message);
   }

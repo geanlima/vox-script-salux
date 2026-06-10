@@ -95,6 +95,20 @@
               <span class="form-hint">{{ currentScriptDescription() }}</span>
             </div>
           </div>
+
+          <div class="form-row">
+            <label class="form-check">
+              <input
+                type="checkbox"
+                [ngModel]="form().generateRollback"
+                (ngModelChange)="updateField('generateRollback', $event)"
+              />
+              Gerar script de rollback (DROP)
+            </label>
+            <span class="form-hint">
+              Gera um segundo arquivo <code>.sql</code> que desfaz as alterações do script principal.
+            </span>
+          </div>
         </div>
 
         <div class="form-section">
@@ -842,7 +856,81 @@
             <span class="file-info__label">Arquivo:</span>
             <code>{{ fileName() }}</code>
           </div>
-          <pre class="sql-preview">{{ generatedSql() }}</pre>
+          <div class="sql-preview-wrap">
+            @if (copied()) {
+              <span class="sql-preview-copied" role="status">Código copiado</span>
+            }
+            <button
+              type="button"
+              class="sql-preview-copy"
+              (click)="copyToClipboard()"
+              [title]="copied() ? 'Copiado!' : 'Copiar script'"
+              [attr.aria-label]="copied() ? 'Copiado!' : 'Copiar script'"
+            >
+              @if (copied()) {
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                </svg>
+              } @else {
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                  />
+                </svg>
+              }
+            </button>
+            <pre class="sql-preview">{{ generatedSql() }}</pre>
+          </div>
+
+          @if (rollbackSql()) {
+            <div class="rollback-preview">
+              <div class="rollback-preview__header">
+                <h3 class="rollback-preview__title">Rollback</h3>
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--small"
+                  (click)="downloadRollback()"
+                >
+                  Baixar rollback .sql
+                </button>
+              </div>
+              <div class="file-info">
+                <span class="file-info__label">Arquivo:</span>
+                <code>{{ rollbackFileName() }}</code>
+              </div>
+              <div class="sql-preview-wrap">
+                @if (rollbackCopied()) {
+                  <span class="sql-preview-copied" role="status">Código copiado</span>
+                }
+                <button
+                  type="button"
+                  class="sql-preview-copy"
+                  (click)="copyRollbackToClipboard()"
+                  [title]="rollbackCopied() ? 'Copiado!' : 'Copiar rollback'"
+                  [attr.aria-label]="rollbackCopied() ? 'Copiado!' : 'Copiar rollback'"
+                >
+                  @if (rollbackCopied()) {
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                  } @else {
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="currentColor"
+                        d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                      />
+                    </svg>
+                  }
+                </button>
+                <pre class="sql-preview">{{ rollbackSql() }}</pre>
+              </div>
+            </div>
+          } @else if (form().generateRollback && showPreview()) {
+            <p class="form-hint rollback-preview__unavailable">
+              Rollback automático não disponível para este tipo de script.
+            </p>
+          }
         </div>
       </section>
     }

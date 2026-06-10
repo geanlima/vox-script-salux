@@ -91,6 +91,9 @@
                 <th>Tipo</th>
                 <th>Tabela</th>
                 <th>Arquivo</th>
+                @if (isMaster()) {
+                  <th>Dono</th>
+                }
                 <th>Atualizado</th>
                 <th></th>
               </tr>
@@ -103,6 +106,9 @@
                   <td>{{ scriptTypeLabel(item.scriptType) }}</td>
                   <td>{{ item.tableName || '—' }}</td>
                   <td><code>{{ item.fileName }}</code></td>
+                  @if (isMaster()) {
+                    <td>{{ item.ownerName || '—' }}</td>
+                  }
                   <td>{{ formatDate(item.updatedAt) }}</td>
                   <td class="data-table__actions">
                     <button type="button" class="btn btn--text btn--small" (click)="editScript(item.id)">

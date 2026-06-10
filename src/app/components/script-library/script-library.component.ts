@@ -1,8 +1,9 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { SCRIPT_TYPE_OPTIONS } from '../../models/script-types';
 import { SavedScriptSummary } from '../../models/saved-script.model';
+import { AuthService } from '../../services/auth.service';
 import { ScriptStorageService } from '../../services/script-storage.service';
 
 @Component({
@@ -14,6 +15,7 @@ import { ScriptStorageService } from '../../services/script-storage.service';
 })
 export class ScriptLibraryComponent implements OnInit {
   readonly scriptTypes = SCRIPT_TYPE_OPTIONS;
+  readonly isMaster = inject(AuthService).isMaster;
 
   scripts = signal<SavedScriptSummary[]>([]);
   loading = signal(true);

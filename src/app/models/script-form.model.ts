@@ -46,6 +46,7 @@ export interface ScriptFormData {
   objectName: string;
   cursorDefaultValue: string;
   cursorWhereClause: string;
+  generateRollback: boolean;
 }
 
 export function createEmptyColumn(): TableColumn {
@@ -96,6 +97,7 @@ export function createEmptyFormData(): ScriptFormData {
     plsqlBody: '',
     objectName: '',
     cursorDefaultValue: "'N'",
-    cursorWhereClause: ''
+    cursorWhereClause: '',
+    generateRollback: false
   };
 }

@@ -1,0 +1,175 @@
+<div class="login-page">
+  <header class="portal-header">
+    <div class="portal-header__brand">
+      <svg class="portal-header__logo" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l7.5 3.75v7.14L12 18.82l-7.5-3.75V7.93L12 4.18z"
+        />
+      </svg>
+      <div>
+        <span class="portal-header__title">VoxScript Salux</span>
+        <span class="portal-header__subtitle">Gerador de Scripts Oracle</span>
+      </div>
+    </div>
+    <div class="portal-header__actions">
+      <span class="portal-header__badge">INFOSAUDE</span>
+    </div>
+  </header>
+
+  <main class="login-content">
+    <section class="card login-card">
+      <div class="card__header">
+        <h2>{{ title() }}</h2>
+      </div>
+      <div class="card__body">
+        @if (errorMessage()) {
+          <div class="alert alert--error" role="alert">{{ errorMessage() }}</div>
+        }
+
+        @if (successMessage()) {
+          <div class="alert alert--success" role="status">{{ successMessage() }}</div>
+        }
+
+        <form (ngSubmit)="submit()">
+          <div class="form-row">
+            <label class="form-label" for="username">Usuário *</label>
+            <input
+              id="username"
+              class="form-input"
+              type="text"
+              name="username"
+              autocomplete="username"
+              placeholder="Ex: joao.silva"
+              [ngModel]="username()"
+              (ngModelChange)="username.set($event)"
+            />
+          </div>
+
+          @if (mode() === 'register') {
+            <div class="form-row">
+              <label class="form-label" for="displayName">Nome completo *</label>
+              <input
+                id="displayName"
+                class="form-input"
+                type="text"
+                name="displayName"
+                autocomplete="name"
+                placeholder="Ex: João da Silva"
+                [ngModel]="displayName()"
+                (ngModelChange)="displayName.set($event)"
+              />
+            </div>
+          }
+
+          @if (mode() === 'login' || mode() === 'register') {
+            <div class="form-row">
+              <label class="form-label" for="password">Senha *</label>
+              <input
+                id="password"
+                class="form-input"
+                type="password"
+                name="password"
+                [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'"
+                [ngModel]="password()"
+                (ngModelChange)="password.set($event)"
+              />
+              @if (mode() === 'register') {
+                <p class="form-hint">Mínimo de 6 caracteres.</p>
+              }
+            </div>
+          }
+
+          @if (mode() === 'register') {
+            <div class="form-row">
+              <label class="form-label" for="confirmPassword">Confirmar senha *</label>
+              <input
+                id="confirmPassword"
+                class="form-input"
+                type="password"
+                name="confirmPassword"
+                autocomplete="new-password"
+                [ngModel]="confirmPassword()"
+                (ngModelChange)="confirmPassword.set($event)"
+              />
+            </div>
+          }
+
+          @if (mode() === 'login') {
+            <div class="form-row form-row--checkbox">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  name="rememberMe"
+                  [ngModel]="rememberMe()"
+                  (ngModelChange)="rememberMe.set($event)"
+                />
+                Manter conectado
+              </label>
+            </div>
+          }
+
+          @if (mode() === 'change-password') {
+            <div class="form-row">
+              <label class="form-label" for="currentPassword">Senha atual *</label>
+              <input
+                id="currentPassword"
+                class="form-input"
+                type="password"
+                name="currentPassword"
+                autocomplete="current-password"
+                [ngModel]="currentPassword()"
+                (ngModelChange)="currentPassword.set($event)"
+              />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="newPassword">Nova senha *</label>
+              <input
+                id="newPassword"
+                class="form-input"
+                type="password"
+                name="newPassword"
+                autocomplete="new-password"
+                [ngModel]="newPassword()"
+                (ngModelChange)="newPassword.set($event)"
+              />
+              <p class="form-hint">Mínimo de 6 caracteres.</p>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="confirmNewPassword">Confirmar nova senha *</label>
+              <input
+                id="confirmNewPassword"
+                class="form-input"
+                type="password"
+                name="confirmNewPassword"
+                autocomplete="new-password"
+                [ngModel]="confirmNewPassword()"
+                (ngModelChange)="confirmNewPassword.set($event)"
+              />
+            </div>
+          }
+
+          <button type="submit" class="btn btn--primary login-submit" [disabled]="loading()">
+            {{ loading() ? 'Aguarde...' : submitLabel() }}
+          </button>
+        </form>
+
+        <div class="login-links">
+          @if (mode() !== 'login') {
+            <button type="button" class="btn btn--text btn--small" (click)="setMode('login')">
+              Voltar para o login
+            </button>
+          }
+          @if (mode() === 'login') {
+            <button type="button" class="btn btn--text btn--small" (click)="setMode('register')">
+              Cadastre-se
+            </button>
+            <button type="button" class="btn btn--text btn--small" (click)="setMode('change-password')">
+              Alterar senha
+            </button>
+          }
+        </div>
+      </div>
+    </section>
+  </main>
+</div>

@@ -9,6 +9,9 @@ const IGNORABLE_SEMANTIC_ORA_CODES = new Set([
   955, // name is already used by an existing object
   1031, // insufficient privileges
   1418, // specified index does not exist
+  1435, // user does not exist (schema inexistente no sandbox)
+  1917, // user or role does not exist (GRANT para role inexistente)
+  1918, // user does not exist (schema INFOSAUDE inexistente no sandbox)
   2289, // sequence does not exist
   2431, // cannot drop constraint - nonexistent
   2443, // cannot drop constraint - nonexistent

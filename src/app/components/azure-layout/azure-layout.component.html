@@ -14,6 +14,15 @@
     </div>
     <div class="portal-header__actions">
       <span class="portal-header__badge">INFOSAUDE</span>
+      @if (currentUser(); as user) {
+        <span class="portal-header__user" [title]="user.username">
+          {{ user.displayName }}
+          @if (isMaster()) {
+            <span class="portal-header__role">MASTER</span>
+          }
+        </span>
+        <button type="button" class="portal-header__logout" (click)="logout()">Sair</button>
+      }
     </div>
   </header>
 

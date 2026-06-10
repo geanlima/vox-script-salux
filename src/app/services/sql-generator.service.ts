@@ -22,6 +22,8 @@ export interface ValidationError {
 export interface SqlGenerationResult {
   sql: string;
   fileName: string;
+  rollbackSql: string;
+  rollbackFileName: string;
   errors: ValidationError[];
 }
 
@@ -30,7 +32,7 @@ export class SqlGeneratorService {
   generate(form: ScriptFormData): SqlGenerationResult {
     const errors = this.validate(form);
     if (errors.length > 0) {
-      return { sql: '', fileName: '', errors };
+      return { sql: '', fileName: '', rollbackSql: '', rollbackFileName: '', errors };
     }
 
     const table = this.normalize(form.tableName);
@@ -78,7 +80,112 @@ export class SqlGeneratorService {
       form.scriptType === 'ADD_COLUMN' ? this.resolveAddColumnFileSuffix(form) : column;
     const fileName = this.buildFileName(form, table, fileSuffix);
 
-    return { sql, fileName, errors: [] };
+    let rollbackSql = '';
+    let rollbackFileName = '';
+
+    if (form.generateRollback) {
+      const rollbackCommands = this.buildRollbackCommands(form, table, column);
+      if (rollbackCommands.length > 0) {
+        rollbackSql = this.joinCommands(rollbackCommands);
+        rollbackFileName = this.buildFileName(form, table, fileSuffix, true);
+      }
+    }
+
+    return { sql, fileName, rollbackSql, rollbackFileName, errors: [] };
+  }
+
+  private buildRollbackCommands(form: ScriptFormData, table: string, column: string): string[] {
+    switch (form.scriptType) {
+      case 'ADD_COLUMN':
+        return this.buildAddColumnsRollback(form, table);
+      case 'CREATE_TABLE':
+        return this.buildCreateTableRollback(form, table);
+      case 'PRIMARY_KEY': {
+        const columnNames = form.pkColumns
+          .split(',')
+          .map((col) => this.normalize(col))
+          .filter(Boolean);
+        return [
+          `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${this.buildPkConstraintName(columnNames)}`
+        ];
+      }
+      case 'FOREIGN_KEY':
+        return [
+          `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${buildFkConstraintName(table, form.fkSequence)}`
+        ];
+      case 'CHECK_CONSTRAINT':
+        return [
+          `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${buildCkcConstraintName(table, form.ckcSequence)}`
+        ];
+      case 'SEQUENCE':
+        return this.buildSequenceRollback(this.normalize(form.sequenceName));
+      case 'FUNCTION': {
+        const name = this.normalize(form.objectName);
+        return [`DROP PUBLIC SYNONYM ${name}`, `DROP FUNCTION ${SCHEMA}.${name}`];
+      }
+      case 'PROCEDURE':
+        return [`DROP PROCEDURE ${SCHEMA}.${this.normalize(form.objectName)}`];
+      case 'TRIGGER':
+        return [`DROP TRIGGER ${SCHEMA}.${this.normalize(form.objectName)}`];
+      case 'CURSOR_NOT_NULL':
+        return [`ALTER TABLE ${SCHEMA}.${table} DROP COLUMN ${column}`];
+      default:
+        // DROP_TABLE: não há como gerar o CREATE original automaticamente.
+        return [];
+    }
+  }
+
+  private buildAddColumnsRollback(form: ScriptFormData, table: string): string[] {
+    const commands: string[] = [];
+
+    // Ordem inversa da criação: constraints primeiro, depois colunas e sequence.
+    for (const col of form.addColumns.filter((entry) => entry.constraintType === 'CHECK')) {
+      commands.push(
+        `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${buildCkcConstraintName(table, col.ckcSequence)}`
+      );
+    }
+
+    for (const col of form.addColumns.filter((entry) => entry.constraintType === 'FK')) {
+      commands.push(
+        `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${buildFkConstraintName(table, col.fkSequence)}`
+      );
+    }
+
+    const pkEntries = form.addColumns.filter((col) => col.constraintType === 'PK');
+    const pkColumns = pkEntries.map((col) => this.normalize(col.name)).filter(Boolean);
+    if (pkColumns.length > 0) {
+      commands.push(
+        `ALTER TABLE ${SCHEMA}.${table} DROP CONSTRAINT ${this.resolvePkConstraintName(pkEntries, pkColumns)}`
+      );
+    }
+
+    for (const col of form.addColumns) {
+      commands.push(`ALTER TABLE ${SCHEMA}.${table} DROP COLUMN ${this.normalize(col.name)}`);
+    }
+
+    if (form.createSequence) {
+      commands.push(...this.buildSequenceRollback(this.truncateName(`SEQ_${table}`)));
+    }
+
+    return commands;
+  }
+
+  private buildCreateTableRollback(form: ScriptFormData, table: string): string[] {
+    const commands: string[] = [];
+
+    if (form.createSequence) {
+      commands.push(...this.buildSequenceRollback(this.truncateName(`SEQ_${table}`)));
+    }
+
+    commands.push(`DROP TABLE ${SCHEMA}.${table} CASCADE CONSTRAINTS`);
+    commands.push(`DROP PUBLIC SYNONYM ${table}`);
+
+    return commands;
+  }
+
+  private buildSequenceRollback(seqName: string): string[] {
+    const name = this.normalize(seqName);
+    return [`DROP PUBLIC SYNONYM ${name}`, `DROP SEQUENCE ${SCHEMA}.${name}`];
   }
 
   private resolveAddColumnFileSuffix(form: ScriptFormData): string {
@@ -618,12 +725,18 @@ export class SqlGeneratorService {
     return commands.map((cmd) => `${cmd.trim()}\n/`).join('\n');
   }
 
-  private buildFileName(form: ScriptFormData, table: string, column: string): string {
+  private buildFileName(
+    form: ScriptFormData,
+    table: string,
+    column: string,
+    rollback = false
+  ): string {
     const card = form.cardNumber.trim().replace(/\s+/g, '_');
     const type = form.scriptType.toLowerCase();
     const suffix = column || table || form.objectName || form.sequenceName;
     const normalizedSuffix = this.normalize(suffix || 'script');
-    return `CARD_${card}_${type}_${normalizedSuffix}.sql`;
+    const prefix = rollback ? 'rollback_' : '';
+    return `CARD_${card}_${prefix}${type}_${normalizedSuffix}.sql`;
   }
 
   private normalize(value: string): string {

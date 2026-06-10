@@ -20,6 +20,9 @@ services:
       ORACLE_USER: ${ORACLE_USER:-validator}
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
       ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-oracle:1521/XEPDB1}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      MASTER_USERNAME: ${MASTER_USERNAME:-master}
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-master@123}
     depends_on:
       oracle:
         condition: service_healthy

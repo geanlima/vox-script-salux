@@ -36,6 +36,8 @@ export class ScriptFormComponent implements OnInit {
   form = signal<ScriptFormData>(createEmptyFormData());
   generatedSql = signal('');
   fileName = signal('');
+  rollbackSql = signal('');
+  rollbackFileName = signal('');
   validationErrors = signal<{ field: string; message: string }[]>([]);
   showPreview = signal(false);
   savedScriptId = signal<number | null>(null);
@@ -44,9 +46,13 @@ export class ScriptFormComponent implements OnInit {
   saving = signal(false);
   storageAvailable = signal(false);
   showLeaveDialog = signal(false);
+  copied = signal(false);
+  rollbackCopied = signal(false);
 
   private formBaseline = signal(this.serializeForm(createEmptyFormData()));
   private leaveDialogResolver: ((allow: boolean) => void) | null = null;
+  private copiedTimeout: ReturnType<typeof setTimeout> | undefined;
+  private rollbackCopiedTimeout: ReturnType<typeof setTimeout> | undefined;
 
   readonly currentScriptType = computed(() => this.form().scriptType);
   readonly currentScriptDescription = computed(
@@ -259,6 +265,14 @@ export class ScriptFormComponent implements OnInit {
     }
   }
 
+  downloadRollback(): void {
+    const sql = this.rollbackSql();
+    const name = this.rollbackFileName();
+    if (sql && name) {
+      this.sqlGenerator.downloadSql(sql, name);
+    }
+  }
+
   saveScript(): void {
     void this.saveScriptAsync().then((saved) => {
       if (saved) {
@@ -318,10 +332,22 @@ export class ScriptFormComponent implements OnInit {
 
     this.scriptStorage.getById(id).subscribe({
       next: (saved) => {
-        this.form.set(saved.formData);
+        const formData = { ...createEmptyFormData(), ...saved.formData };
+        this.form.set(formData);
         this.generatedSql.set(saved.generatedSql);
         this.fileName.set(saved.fileName);
         this.savedScriptId.set(saved.id);
+
+        // O rollback não é persistido; regera a partir do formulário salvo.
+        if (formData.generateRollback) {
+          const result = this.sqlGenerator.generate(formData);
+          this.rollbackSql.set(result.rollbackSql);
+          this.rollbackFileName.set(result.rollbackFileName);
+        } else {
+          this.rollbackSql.set('');
+          this.rollbackFileName.set('');
+        }
+
         this.validationErrors.set([]);
         this.showPreview.set(true);
         this.storageMessage.set(`Script #${saved.id} carregado para edição.`);
@@ -344,9 +370,28 @@ export class ScriptFormComponent implements OnInit {
 
   copyToClipboard(): void {
     const sql = this.generatedSql();
-    if (sql) {
-      navigator.clipboard.writeText(sql);
+    if (!sql) {
+      return;
     }
+
+    navigator.clipboard.writeText(sql).then(() => {
+      this.copied.set(true);
+      clearTimeout(this.copiedTimeout);
+      this.copiedTimeout = setTimeout(() => this.copied.set(false), 2000);
+    });
+  }
+
+  copyRollbackToClipboard(): void {
+    const sql = this.rollbackSql();
+    if (!sql) {
+      return;
+    }
+
+    navigator.clipboard.writeText(sql).then(() => {
+      this.rollbackCopied.set(true);
+      clearTimeout(this.rollbackCopiedTimeout);
+      this.rollbackCopiedTimeout = setTimeout(() => this.rollbackCopied.set(false), 2000);
+    });
   }
 
   private suggestPkConstraintName(col: AddColumnEntry, columns: AddColumnEntry[]): string {
@@ -394,6 +439,8 @@ export class ScriptFormComponent implements OnInit {
     this.validationErrors.set(result.errors);
     this.generatedSql.set(result.sql);
     this.fileName.set(result.fileName);
+    this.rollbackSql.set(result.rollbackSql);
+    this.rollbackFileName.set(result.rollbackFileName);
     this.showPreview.set(result.errors.length === 0);
     return result;
   }
@@ -401,6 +448,8 @@ export class ScriptFormComponent implements OnInit {
   private clearOutput(): void {
     this.generatedSql.set('');
     this.fileName.set('');
+    this.rollbackSql.set('');
+    this.rollbackFileName.set('');
     this.validationErrors.set([]);
     this.showPreview.set(false);
   }

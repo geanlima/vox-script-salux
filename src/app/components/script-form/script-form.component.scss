@@ -612,9 +612,81 @@
   }
 }
 
+.sql-preview-wrap {
+  position: relative;
+}
+
+.sql-preview-copied {
+  position: absolute;
+  top: 12px;
+  right: 48px;
+  padding: 4px 10px;
+  background: rgba(16, 124, 16, 0.95);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 2px;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.sql-preview-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #d4d4d4;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  z-index: 1;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+}
+
+.rollback-preview {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--portal-border);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  &__unavailable {
+    margin-top: 16px;
+  }
+}
+
 .sql-preview {
   margin: 0;
   padding: 16px;
+  padding-right: 48px;
   background: #1e1e1e;
   color: #d4d4d4;
   font-family: 'Cascadia Code', 'Consolas', monospace;

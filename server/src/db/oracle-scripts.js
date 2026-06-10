@@ -27,12 +27,27 @@ export async function initScriptStorageSchema() {
     );
 
     if (Number(exists.rows[0].CNT) > 0) {
+      // Migração: tabelas criadas antes da autenticação não possuem user_id.
+      const hasUserId = await connection.execute(
+        `SELECT COUNT(*) AS cnt
+         FROM user_tab_columns
+         WHERE table_name = 'VOX_SCRIPTS' AND column_name = 'USER_ID'`,
+        {},
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+
+      if (Number(hasUserId.rows[0].CNT) === 0) {
+        await connection.execute(`ALTER TABLE vox_scripts ADD (user_id NUMBER)`);
+        await connection.execute(`CREATE INDEX idx_vox_scripts_user ON vox_scripts (user_id)`);
+        await connection.commit();
+      }
       return;
     }
 
     await connection.execute(`
       CREATE TABLE vox_scripts (
         id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        user_id NUMBER,
         card_number VARCHAR2(50) NOT NULL,
         script_type VARCHAR2(50) NOT NULL,
         table_name VARCHAR2(30),
@@ -52,6 +67,9 @@ export async function initScriptStorageSchema() {
     `);
     await connection.execute(`
       CREATE INDEX idx_vox_scripts_updated ON vox_scripts (updated_at DESC)
+    `);
+    await connection.execute(`
+      CREATE INDEX idx_vox_scripts_user ON vox_scripts (user_id)
     `);
 
     await connection.commit();
@@ -79,7 +97,9 @@ function mapSummaryRow(row) {
     tableName: row.TABLE_NAME,
     fileName: row.FILE_NAME,
     createdAt: row.CREATED_AT,
-    updatedAt: row.UPDATED_AT
+    updatedAt: row.UPDATED_AT,
+    userId: row.USER_ID != null ? Number(row.USER_ID) : null,
+    ownerName: row.OWNER_NAME ?? null
   };
 }
 
@@ -92,38 +112,46 @@ async function mapFullRow(row) {
   };
 }
 
-export async function listScripts(filters = {}) {
+export async function listScripts(filters = {}, ownerUserId = null) {
   return withOracleConnection(async (connection) => {
     let sql = `
-      SELECT id, card_number, script_type, table_name, file_name, created_at, updated_at
-      FROM vox_scripts
+      SELECT s.id, s.card_number, s.script_type, s.table_name, s.file_name,
+             s.created_at, s.updated_at, s.user_id,
+             u.display_name AS owner_name
+      FROM vox_scripts s
+      LEFT JOIN vox_users u ON u.id = s.user_id
       WHERE 1 = 1
     `;
     const binds = {};
     const limit = Math.min(Number(filters.limit ?? 100) || 100, 500);
 
+    if (ownerUserId != null) {
+      sql += ' AND s.user_id = :ownerUserId';
+      binds.ownerUserId = ownerUserId;
+    }
+
     if (filters.cardNumber?.trim()) {
-      sql += ' AND UPPER(card_number) LIKE UPPER(:cardNumber)';
+      sql += ' AND UPPER(s.card_number) LIKE UPPER(:cardNumber)';
       binds.cardNumber = `%${filters.cardNumber.trim()}%`;
     }
 
     if (filters.scriptType?.trim()) {
-      sql += ' AND script_type = :scriptType';
+      sql += ' AND s.script_type = :scriptType';
       binds.scriptType = filters.scriptType.trim().toUpperCase();
     }
 
     if (filters.q?.trim()) {
       sql += `
         AND (
-          UPPER(file_name) LIKE UPPER(:search)
-          OR UPPER(NVL(table_name, ' ')) LIKE UPPER(:search)
-          OR UPPER(card_number) LIKE UPPER(:search)
+          UPPER(s.file_name) LIKE UPPER(:search)
+          OR UPPER(NVL(s.table_name, ' ')) LIKE UPPER(:search)
+          OR UPPER(s.card_number) LIKE UPPER(:search)
         )
       `;
       binds.search = `%${filters.q.trim()}%`;
     }
 
-    sql += ' ORDER BY updated_at DESC FETCH FIRST :limit ROWS ONLY';
+    sql += ' ORDER BY s.updated_at DESC FETCH FIRST :limit ROWS ONLY';
     binds.limit = limit;
 
     const result = await connection.execute(sql, binds, {
@@ -137,7 +165,10 @@ export async function listScripts(filters = {}) {
 export async function getScriptById(id) {
   return withOracleConnection(async (connection) => {
     const result = await connection.execute(
-      `SELECT * FROM vox_scripts WHERE id = :id`,
+      `SELECT s.*, u.display_name AS owner_name
+       FROM vox_scripts s
+       LEFT JOIN vox_users u ON u.id = s.user_id
+       WHERE s.id = :id`,
       { id },
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
@@ -150,18 +181,19 @@ export async function getScriptById(id) {
   });
 }
 
-export async function createScript(payload) {
+export async function createScript(payload, userId = null) {
   const { formData, generatedSql, fileName } = payload;
   let newId;
 
   await withOracleConnection(async (connection) => {
     const result = await connection.execute(
       `INSERT INTO vox_scripts (
-         card_number, script_type, table_name, file_name, form_data, generated_sql
+         user_id, card_number, script_type, table_name, file_name, form_data, generated_sql
        ) VALUES (
-         :cardNumber, :scriptType, :tableName, :fileName, :formData, :generatedSql
+         :userId, :cardNumber, :scriptType, :tableName, :fileName, :formData, :generatedSql
        ) RETURNING id INTO :id`,
       {
+        userId,
         cardNumber: formData.cardNumber.trim(),
         scriptType: formData.scriptType.trim(),
         tableName: formData.tableName?.trim() || null,

@@ -24,12 +24,7 @@ export class SyntaxValidatorService {
         this.logError(0, 'Existe uma linha em branco no final no arquivo.');
       }
 
-      const normalized = this.normalizeDoubleSpaces(text);
-      if (normalized === null) {
-        this.logError(0, 'Não foi possível normalizar espaços duplos no arquivo.');
-      }
-
-      const workingText = normalized ?? text;
+      const workingText = this.normalizeDoubleSpaces(text);
 
       if (this.validateSlashSeparators(workingText) < 0) {
         this.logError(0, 'Quantidade excessiva de separadores / no arquivo.');
@@ -106,15 +101,11 @@ export class SyntaxValidatorService {
     return normalized.endsWith('\n /') || normalized.endsWith(' /');
   }
 
-  private normalizeDoubleSpaces(text: string): string | null {
+  // Cada passada reduz pela metade as sequências de espaços, então o loop sempre termina.
+  private normalizeDoubleSpaces(text: string): string {
     let result = text;
-    let guard = 0;
     while (result.includes('  ')) {
-      result = result.replace('  ', ' ');
-      guard++;
-      if (guard > 30) {
-        return null;
-      }
+      result = result.replace(/  /g, ' ');
     }
     return result;
   }
