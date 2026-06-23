@@ -18,6 +18,7 @@ import {
 } from '../../models/script-form.model';
 import { buildCkcConstraintName } from '../../models/constraint-name.util';
 import { ScriptImportService } from '../../services/script-import.service';
+import { ScriptImportSessionService } from '../../services/script-import-session.service';
 import { SqlGeneratorService } from '../../services/sql-generator.service';
 import { ScriptStorageService } from '../../services/script-storage.service';
 
@@ -75,10 +76,13 @@ export class ScriptFormComponent implements OnInit {
     private readonly sqlGenerator: SqlGeneratorService,
     private readonly scriptStorage: ScriptStorageService,
     private readonly route: ActivatedRoute,
-    private readonly scriptImport: ScriptImportService
+    private readonly scriptImport: ScriptImportService,
+    private readonly importSession: ScriptImportSessionService
   ) {}
 
   ngOnInit(): void {
+    this.applyPendingImport();
+
     this.scriptStorage.getStorageStatus().subscribe({
       next: (status) => this.storageAvailable.set(status.available),
       error: () => this.storageAvailable.set(false)
@@ -524,5 +528,22 @@ export class ScriptFormComponent implements OnInit {
     this.importWarnings.set([]);
     this.importSuccess.set(false);
     this.importedFileName.set('');
+  }
+
+  private applyPendingImport(): void {
+    const pending = this.importSession.consumePending();
+    if (!pending) {
+      return;
+    }
+
+    this.form.set(pending.form);
+    this.savedScriptId.set(null);
+    this.importWarnings.set(pending.warnings);
+    this.importSuccess.set(true);
+    this.importedFileName.set(pending.fileName);
+    this.storageMessage.set('Dados importados. Revise os campos e clique em Gerar.');
+    this.storageError.set('');
+    this.clearOutput();
+    this.markFormBaseline();
   }
 }

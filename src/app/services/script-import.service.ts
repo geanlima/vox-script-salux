@@ -18,6 +18,15 @@ export interface ScriptImportResult {
   sourceFileName?: string;
 }
 
+export interface ScriptImportAnalysis {
+  detectedType: ScriptType | null;
+  typeFromFileName: ScriptType | null;
+  cardNumberFromFileName: string | null;
+  suggestedType: ScriptType | null;
+  warnings: string[];
+  errors: string[];
+}
+
 const FILENAME_PATTERN = /^CARD_(\d+)_([a-z_]+)_/i;
 
 const FILENAME_TYPE_MAP: Record<string, ScriptType> = {
@@ -36,7 +45,63 @@ const FILENAME_TYPE_MAP: Record<string, ScriptType> = {
 
 @Injectable({ providedIn: 'root' })
 export class ScriptImportService {
-  import(sql: string, fileName?: string): ScriptImportResult {
+  analyze(sql: string, fileName?: string): ScriptImportAnalysis {
+    const trimmed = sql.trim();
+    if (!trimmed) {
+      return {
+        detectedType: null,
+        typeFromFileName: null,
+        cardNumberFromFileName: null,
+        suggestedType: null,
+        warnings: [],
+        errors: ['O arquivo está vazio.']
+      };
+    }
+
+    const statements = splitOracleScript(trimmed);
+    if (statements.length === 0) {
+      return {
+        detectedType: null,
+        typeFromFileName: null,
+        cardNumberFromFileName: null,
+        suggestedType: null,
+        warnings: [],
+        errors: ['Nenhum comando SQL encontrado no arquivo.']
+      };
+    }
+
+    const fileMeta = fileName ? this.parseFileName(fileName) : null;
+    const detectedType = this.detectScriptType(trimmed, statements);
+    const typeFromFileName = fileMeta?.scriptType ?? null;
+    const warnings: string[] = [];
+
+    if (detectedType && typeFromFileName && typeFromFileName !== detectedType) {
+      warnings.push(
+        `O nome do arquivo indica "${this.typeLabel(typeFromFileName)}", mas o conteúdo foi identificado como "${this.typeLabel(detectedType)}".`
+      );
+    }
+
+    if (!detectedType && typeFromFileName) {
+      warnings.push(
+        `Tipo não identificado no conteúdo. Sugestão pelo nome do arquivo: "${this.typeLabel(typeFromFileName)}".`
+      );
+    }
+
+    if (!detectedType && !typeFromFileName) {
+      warnings.push('Tipo não identificado automaticamente. Selecione o tipo manualmente.');
+    }
+
+    return {
+      detectedType,
+      typeFromFileName,
+      cardNumberFromFileName: fileMeta?.cardNumber ?? null,
+      suggestedType: detectedType ?? typeFromFileName,
+      warnings,
+      errors: []
+    };
+  }
+
+  import(sql: string, fileName?: string, scriptType?: ScriptType): ScriptImportResult {
     const trimmed = sql.trim();
     if (!trimmed) {
       return this.failure(['O arquivo está vazio.']);
@@ -50,27 +115,34 @@ export class ScriptImportService {
     const warnings: string[] = [];
     const fileMeta = fileName ? this.parseFileName(fileName) : null;
     const detectedType = this.detectScriptType(trimmed, statements);
+    const resolvedType = scriptType ?? detectedType;
 
-    if (!detectedType) {
+    if (!resolvedType) {
       return this.failure([
-        'Não foi possível identificar o tipo do script. Verifique se o arquivo segue o padrão do Cadastros Gerais.'
+        'Não foi possível identificar o tipo do script. Selecione o tipo manualmente e tente novamente.'
       ]);
     }
 
-    if (fileMeta?.scriptType && fileMeta.scriptType !== detectedType) {
+    if (scriptType && detectedType && scriptType !== detectedType) {
       warnings.push(
-        `O nome do arquivo indica "${this.typeLabel(fileMeta.scriptType)}", mas o conteúdo foi identificado como "${this.typeLabel(detectedType)}". O conteúdo foi priorizado.`
+        `Tipo selecionado "${this.typeLabel(scriptType)}" difere do detectado no conteúdo "${this.typeLabel(detectedType)}".`
       );
     }
 
-    const parsed = this.parseByType(detectedType, statements, trimmed);
+    if (fileMeta?.scriptType && fileMeta.scriptType !== resolvedType) {
+      warnings.push(
+        `O nome do arquivo indica "${this.typeLabel(fileMeta.scriptType)}", mas foi usado "${this.typeLabel(resolvedType)}".`
+      );
+    }
+
+    const parsed = this.parseByType(resolvedType, statements, trimmed);
     if (parsed.errors.length > 0) {
       return {
         success: false,
         form: createEmptyFormData(),
         warnings,
         errors: parsed.errors,
-        detectedType,
+        detectedType: resolvedType,
         sourceFileName: fileName
       };
     }
@@ -78,7 +150,7 @@ export class ScriptImportService {
     const form: ScriptFormData = {
       ...createEmptyFormData(),
       ...parsed.fields,
-      scriptType: detectedType,
+      scriptType: resolvedType,
       cardNumber: fileMeta?.cardNumber ?? parsed.fields.cardNumber ?? ''
     };
 
@@ -91,7 +163,7 @@ export class ScriptImportService {
       form,
       warnings,
       errors: [],
-      detectedType,
+      detectedType: resolvedType,
       sourceFileName: fileName
     };
   }

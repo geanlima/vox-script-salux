@@ -1,0 +1,160 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Importar Script</h1>
+    <p class="page-header__desc">
+      Selecione um arquivo <strong>.sql</strong> para identificar o tipo do script, ajustar se necessário
+      e enviar os dados para o cadastro.
+    </p>
+  </div>
+
+  @if (analysisErrors().length > 0) {
+    <div class="alert alert--error" role="alert">
+      <strong>Não foi possível analisar o arquivo:</strong>
+      <ul>
+        @for (error of analysisErrors(); track error) {
+          <li>{{ error }}</li>
+        }
+      </ul>
+    </div>
+  }
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Arquivo</h2>
+      @if (fileName()) {
+        <span class="card__hint"><code>{{ fileName() }}</code></span>
+      }
+    </div>
+    <div class="card__body">
+      <div class="file-picker">
+        <input
+          id="scriptImportPageInput"
+          type="file"
+          accept=".sql,text/plain"
+          class="file-picker__input"
+          (change)="onFileSelected($event)"
+        />
+        <button type="button" class="btn btn--secondary" (click)="triggerFilePicker()">
+          Selecionar arquivo .sql
+        </button>
+        <p class="file-picker__hint">
+          O sistema tenta identificar o tipo pelo conteúdo e pelo nome do arquivo
+          (ex.: <code>CARD_12345_create_table_...</code>).
+        </p>
+      </div>
+
+      @if (sqlContent()) {
+        <label class="form-label" for="sqlPreview">Pré-visualização do script</label>
+        <textarea
+          id="sqlPreview"
+          class="form-input form-textarea script-preview"
+          rows="12"
+          readonly
+          [ngModel]="sqlContent()"
+        ></textarea>
+      }
+    </div>
+  </section>
+
+  @if (sqlContent() && analysisErrors().length === 0) {
+    <section class="card">
+      <div class="card__header">
+        <h2>Tipo do Script</h2>
+      </div>
+      <div class="card__body">
+        @if (analysisWarnings().length > 0) {
+          <div class="alert alert--warning" role="status">
+            <ul>
+              @for (warning of analysisWarnings(); track warning) {
+                <li>{{ warning }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        <div class="type-summary">
+          @if (detectedType(); as detected) {
+            <p>
+              Detectado no conteúdo:
+              <strong>{{ typeLabel(detected) }}</strong>
+            </p>
+          } @else {
+            <p>Tipo não detectado automaticamente no conteúdo.</p>
+          }
+
+          @if (typeFromFileName(); as fromName) {
+            <p>
+              Sugestão pelo nome do arquivo:
+              <strong>{{ typeLabel(fromName) }}</strong>
+            </p>
+          }
+
+          @if (cardNumberFromFileName(); as card) {
+            <p>
+              Card identificado no arquivo:
+              <strong>{{ card }}</strong>
+            </p>
+          }
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="importScriptType">Tipo para importação *</label>
+          <select
+            id="importScriptType"
+            class="form-input"
+            [ngModel]="selectedType()"
+            (ngModelChange)="onTypeChange($event)"
+          >
+            <option [ngValue]="null" disabled>Selecione o tipo</option>
+            @for (type of scriptTypes; track type.value) {
+              <option [ngValue]="type.value">{{ type.label }}</option>
+            }
+          </select>
+          @if (selectedTypeDescription()) {
+            <span class="form-hint">{{ selectedTypeDescription() }}</span>
+          }
+        </div>
+
+        @if (parseWarnings().length > 0) {
+          <div class="alert alert--warning" role="status">
+            <strong>Atenção:</strong>
+            <ul>
+              @for (warning of parseWarnings(); track warning) {
+                <li>{{ warning }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        @if (parseErrors().length > 0) {
+          <div class="alert alert--error" role="alert">
+            <strong>Não foi possível interpretar o script com o tipo selecionado:</strong>
+            <ul>
+              @for (error of parseErrors(); track error) {
+                <li>{{ error }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        @if (parseReady()) {
+          <div class="alert alert--success" role="status">
+            Script interpretado com sucesso. Continue para preencher o cadastro.
+          </div>
+        }
+      </div>
+      <div class="card__footer">
+        <button type="button" class="btn btn--secondary" (click)="clear()">Limpar</button>
+        <a class="btn btn--secondary" routerLink="/">Cancelar</a>
+        <button
+          type="button"
+          class="btn btn--primary"
+          [disabled]="!canContinue()"
+          (click)="continueToCadastro()"
+        >
+          Continuar para Cadastro
+        </button>
+      </div>
+    </section>
+  }
+</div>
