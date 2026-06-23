@@ -393,6 +393,48 @@
     border: 1px solid #9fd89f;
     color: #0b6a0b;
   }
+
+  &--warning {
+    background: #fff4ce;
+    border: 1px solid #f2d675;
+    color: #8a6914;
+  }
+
+  code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 12px;
+  }
+}
+
+.import-panel {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: var(--portal-footer-bg);
+  border: 1px dashed var(--portal-input-border);
+  border-radius: 4px;
+
+  &__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  &__desc {
+    margin: 0;
+    font-size: 13px;
+    color: var(--portal-text-secondary);
+    line-height: 1.5;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  &__input {
+    display: none;
+  }
 }
 
 .columns-list {

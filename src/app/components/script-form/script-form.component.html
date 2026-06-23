@@ -40,6 +40,38 @@
     </div>
   </div>
 
+  @if (importSuccess()) {
+    <div class="alert alert--success" role="status">
+      <strong>Script importado com sucesso.</strong>
+      @if (importedFileName()) {
+        <span> Arquivo: <code>{{ importedFileName() }}</code></span>
+      }
+      <span> Tipo identificado: <strong>{{ currentScriptDescription() }}</strong></span>
+    </div>
+  }
+
+  @if (importWarnings().length > 0) {
+    <div class="alert alert--warning" role="status">
+      <strong>Atenção na importação:</strong>
+      <ul>
+        @for (warning of importWarnings(); track warning) {
+          <li>{{ warning }}</li>
+        }
+      </ul>
+    </div>
+  }
+
+  @if (importErrors().length > 0) {
+    <div class="alert alert--error" role="alert">
+      <strong>Não foi possível importar o script:</strong>
+      <ul>
+        @for (error of importErrors(); track error) {
+          <li>{{ error }}</li>
+        }
+      </ul>
+    </div>
+  }
+
   @if (validationErrors().length > 0) {
     <div class="alert alert--error" role="alert">
       <strong>Corrija os campos abaixo:</strong>
@@ -67,6 +99,25 @@
       <div class="card__body">
         <div class="form-section">
           <h3 class="form-section__title">Identificação</h3>
+
+          <div class="import-panel">
+            <div class="import-panel__content">
+              <p class="import-panel__desc">
+                Importe um arquivo <strong>.sql</strong> para identificar automaticamente o tipo e preencher o cadastro.
+              </p>
+              <input
+                id="scriptImportInput"
+                type="file"
+                accept=".sql,text/plain"
+                class="import-panel__input"
+                (change)="onImportFileSelected($event)"
+              />
+              <button type="button" class="btn btn--secondary btn--small" (click)="triggerImport()">
+                Importar .sql
+              </button>
+            </div>
+          </div>
+
           <div class="form-grid form-grid--2">
             <div class="form-row">
               <label class="form-label" for="cardNumber">Número do Card *</label>

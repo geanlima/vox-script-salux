@@ -17,6 +17,7 @@ import {
   TableColumn
 } from '../../models/script-form.model';
 import { buildCkcConstraintName } from '../../models/constraint-name.util';
+import { ScriptImportService } from '../../services/script-import.service';
 import { SqlGeneratorService } from '../../services/sql-generator.service';
 import { ScriptStorageService } from '../../services/script-storage.service';
 
@@ -39,6 +40,10 @@ export class ScriptFormComponent implements OnInit {
   rollbackSql = signal('');
   rollbackFileName = signal('');
   validationErrors = signal<{ field: string; message: string }[]>([]);
+  importErrors = signal<string[]>([]);
+  importWarnings = signal<string[]>([]);
+  importSuccess = signal(false);
+  importedFileName = signal('');
   showPreview = signal(false);
   savedScriptId = signal<number | null>(null);
   storageMessage = signal('');
@@ -69,7 +74,8 @@ export class ScriptFormComponent implements OnInit {
   constructor(
     private readonly sqlGenerator: SqlGeneratorService,
     private readonly scriptStorage: ScriptStorageService,
-    private readonly route: ActivatedRoute
+    private readonly route: ActivatedRoute,
+    private readonly scriptImport: ScriptImportService
   ) {}
 
   ngOnInit(): void {
@@ -365,7 +371,46 @@ export class ScriptFormComponent implements OnInit {
     this.storageMessage.set('');
     this.storageError.set('');
     this.clearOutput();
+    this.clearImportFeedback();
     this.markFormBaseline();
+  }
+
+  onImportFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    this.clearImportFeedback();
+    this.clearOutput();
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === 'string' ? reader.result : '';
+      const result = this.scriptImport.import(content, file.name);
+
+      this.importedFileName.set(file.name);
+
+      if (!result.success) {
+        this.importErrors.set(result.errors);
+        return;
+      }
+
+      this.form.set(result.form);
+      this.importWarnings.set(result.warnings);
+      this.importSuccess.set(true);
+    };
+    reader.onerror = () => {
+      this.importErrors.set(['Não foi possível ler o arquivo selecionado.']);
+    };
+    reader.readAsText(file);
+
+    input.value = '';
+  }
+
+  triggerImport(): void {
+    document.getElementById('scriptImportInput')?.click();
   }
 
   copyToClipboard(): void {
@@ -472,5 +517,12 @@ export class ScriptFormComponent implements OnInit {
 
   private isFormEmpty(data: ScriptFormData): boolean {
     return this.serializeForm(data) === this.serializeForm(createEmptyFormData());
+  }
+
+  private clearImportFeedback(): void {
+    this.importErrors.set([]);
+    this.importWarnings.set([]);
+    this.importSuccess.set(false);
+    this.importedFileName.set('');
   }
 }
