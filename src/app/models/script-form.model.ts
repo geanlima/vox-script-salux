@@ -20,6 +20,13 @@ export interface AddColumnEntry {
 
 export type TableColumn = AddColumnEntry;
 
+export interface DmlColumnEntry {
+  column: string;
+  dataTypeBase: string;
+  value: string;
+  rollbackValue: string;
+}
+
 export interface ScriptFormData {
   cardNumber: string;
   scriptType: ScriptType;
@@ -46,11 +53,28 @@ export interface ScriptFormData {
   objectName: string;
   cursorDefaultValue: string;
   cursorWhereClause: string;
+  mpModulo: string;
+  mpProcesso: string;
+  mpDescricao: string;
+  mpOperacaoVinculada: string;
+  mpInLogar: string;
+  mpGrupoAcesso: number;
+  dmlColumns: DmlColumnEntry[];
+  dmlWhere: string;
   generateRollback: boolean;
 }
 
 export function createEmptyColumn(): TableColumn {
   return createEmptyAddColumn();
+}
+
+export function createEmptyDmlColumn(): DmlColumnEntry {
+  return {
+    column: '',
+    dataTypeBase: 'VARCHAR2',
+    value: '',
+    rollbackValue: ''
+  };
 }
 
 export function createEmptyAddColumn(): AddColumnEntry {
@@ -98,6 +122,14 @@ export function createEmptyFormData(): ScriptFormData {
     objectName: '',
     cursorDefaultValue: "'N'",
     cursorWhereClause: '',
+    mpModulo: 'Horizon',
+    mpProcesso: '',
+    mpDescricao: '',
+    mpOperacaoVinculada: '',
+    mpInLogar: 'N',
+    mpGrupoAcesso: 1,
+    dmlColumns: [createEmptyDmlColumn()],
+    dmlWhere: '',
     generateRollback: false
   };
 }

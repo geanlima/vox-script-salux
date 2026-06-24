@@ -154,7 +154,7 @@
                 [ngModel]="form().generateRollback"
                 (ngModelChange)="updateField('generateRollback', $event)"
               />
-              Gerar script de rollback (DROP)
+              Gerar script de rollback
             </label>
             <span class="form-hint">
               Gera um segundo arquivo <code>.sql</code> que desfaz as alterações do script principal.
@@ -165,7 +165,7 @@
         <div class="form-section">
           <h3 class="form-section__title">Dados do Objeto</h3>
 
-        @if (currentScriptType() !== 'FUNCTION' && currentScriptType() !== 'PROCEDURE') {
+        @if (!['FUNCTION', 'PROCEDURE', 'MODULO_PROCESSO', 'INSERT', 'UPDATE'].includes(currentScriptType())) {
         @if (currentScriptType() === 'CURSOR_NOT_NULL') {
           <div class="form-grid form-grid--type">
             <div class="form-row">
@@ -863,6 +863,211 @@
           </div>
         }
 
+        @if (currentScriptType() === 'MODULO_PROCESSO') {
+          <div class="form-grid form-grid--2">
+            <div class="form-row">
+              <label class="form-label" for="mpModulo">Módulo (CD_MODULO) *</label>
+              <input
+                id="mpModulo"
+                class="form-input"
+                type="text"
+                placeholder="Ex: Horizon"
+                [ngModel]="form().mpModulo"
+                (ngModelChange)="updateField('mpModulo', $event)"
+              />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="mpProcesso">Processo (CD_PROCESSO) *</label>
+              <input
+                id="mpProcesso"
+                class="form-input"
+                type="text"
+                placeholder="Ex: APUE001_T"
+                [ngModel]="form().mpProcesso"
+                (ngModelChange)="updateField('mpProcesso', $event)"
+              />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label" for="mpDescricao">Descrição (DS_PROCESSO) *</label>
+            <input
+              id="mpDescricao"
+              class="form-input"
+              type="text"
+              placeholder="Ex: Atendimento Puericultura"
+              [ngModel]="form().mpDescricao"
+              (ngModelChange)="updateField('mpDescricao', $event)"
+            />
+          </div>
+
+          <div class="form-grid form-grid--type">
+            <div class="form-row">
+              <label class="form-label" for="mpOperacaoVinculada">Operação Vinculada</label>
+              <input
+                id="mpOperacaoVinculada"
+                class="form-input"
+                type="text"
+                placeholder="Ex: IAE"
+                [ngModel]="form().mpOperacaoVinculada"
+                (ngModelChange)="updateField('mpOperacaoVinculada', $event)"
+              />
+              <span class="form-hint">Vazio gera NULL.</span>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="mpInLogar">Logar (IN_LOGAR)</label>
+              <select
+                id="mpInLogar"
+                class="form-input"
+                [ngModel]="form().mpInLogar"
+                (ngModelChange)="updateField('mpInLogar', $event)"
+              >
+                <option value="N">N</option>
+                <option value="S">S</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="mpGrupoAcesso">Grupo de Acesso</label>
+              <input
+                id="mpGrupoAcesso"
+                class="form-input"
+                type="number"
+                min="1"
+                [ngModel]="form().mpGrupoAcesso"
+                (ngModelChange)="updateField('mpGrupoAcesso', +$event)"
+              />
+              <span class="form-hint">CD_GR_ACESSO do GRUPO_ACESSO_PROCESSO.</span>
+            </div>
+          </div>
+
+          <p class="form-hint">
+            Gera os INSERTs em <code>MODULO_PROCESSO</code> e <code>GRUPO_ACESSO_PROCESSO</code>
+            (com DISABLE/ENABLE da trigger) e libera o processo para os funcionários
+            <code>INFO</code> e <code>SUPER</code> em todos os hospitais ativos.
+          </p>
+        }
+
+        @if (currentScriptType() === 'INSERT' || currentScriptType() === 'UPDATE') {
+          <div class="form-row">
+            <label class="form-label" for="dmlTableName">Tabela *</label>
+            <input
+              id="dmlTableName"
+              class="form-input"
+              type="text"
+              placeholder="Ex: MODULO_PROCESSO"
+              [ngModel]="form().tableName"
+              (ngModelChange)="updateField('tableName', $event)"
+            />
+            <span class="form-hint">Schema INFOSAUDE será aplicado automaticamente.</span>
+          </div>
+
+          <div class="columns-list">
+            <div class="columns-list__header">
+              <h3>{{ currentScriptType() === 'INSERT' ? 'Colunas a inserir' : 'Colunas a atualizar' }}</h3>
+              <button type="button" class="btn btn--secondary btn--small" (click)="addDmlColumn()">
+                + Inserir coluna
+              </button>
+            </div>
+            <p class="form-hint columns-list__intro">
+              Valores de texto recebem aspas automaticamente conforme o tipo. Use
+              <code>SYSDATE</code>, <code>TO_DATE(...)</code> ou <code>NULL</code> quando necessário.
+            </p>
+
+            <div class="table-wrap col-grid">
+              <table class="col-grid__table">
+                <thead>
+                  <tr>
+                    <th class="col-grid__num">#</th>
+                    <th>Coluna *</th>
+                    <th>Tipo</th>
+                    <th>Valor *</th>
+                    @if (currentScriptType() === 'UPDATE' && form().generateRollback) {
+                      <th>Valor anterior (rollback) *</th>
+                    }
+                    <th class="col-grid__actions"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (entry of form().dmlColumns; track $index) {
+                    <tr>
+                      <td class="col-grid__num">{{ $index + 1 }}</td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="CD_PROCESSO"
+                          [ngModel]="entry.column"
+                          (ngModelChange)="updateDmlColumn($index, 'column', $event)"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          class="col-grid__input"
+                          [ngModel]="entry.dataTypeBase"
+                          (ngModelChange)="updateDmlColumn($index, 'dataTypeBase', $event)"
+                        >
+                          @for (type of baseTypes; track type) {
+                            <option [value]="type">{{ type }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          class="col-grid__input"
+                          type="text"
+                          placeholder="Ex: APUE001_T, 1, SYSDATE"
+                          [ngModel]="entry.value"
+                          (ngModelChange)="updateDmlColumn($index, 'value', $event)"
+                        />
+                      </td>
+                      @if (currentScriptType() === 'UPDATE' && form().generateRollback) {
+                        <td>
+                          <input
+                            class="col-grid__input"
+                            type="text"
+                            placeholder="Valor antes do UPDATE"
+                            [ngModel]="entry.rollbackValue"
+                            (ngModelChange)="updateDmlColumn($index, 'rollbackValue', $event)"
+                          />
+                        </td>
+                      }
+                      <td class="col-grid__actions">
+                        @if (form().dmlColumns.length > 1) {
+                          <button
+                            type="button"
+                            class="btn btn--text btn--small"
+                            (click)="removeDmlColumn($index)"
+                            title="Remover coluna"
+                          >
+                            ✕
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          @if (currentScriptType() === 'UPDATE') {
+            <div class="form-row">
+              <label class="form-label" for="dmlWhere">Condição WHERE *</label>
+              <input
+                id="dmlWhere"
+                class="form-input"
+                type="text"
+                placeholder="Ex: CD_MODULO = 'Horizon' AND CD_PROCESSO = 'APUE001_T'"
+                [ngModel]="form().dmlWhere"
+                (ngModelChange)="updateField('dmlWhere', $event)"
+              />
+              <span class="form-hint">
+                Obrigatória para evitar UPDATE em todas as linhas. Use <code>1 = 1</code> se for intencional.
+              </span>
+            </div>
+          }
+        }
+
         @if (currentScriptType() === 'FUNCTION' || currentScriptType() === 'PROCEDURE' || currentScriptType() === 'TRIGGER') {
           <div class="form-row">
             <label class="form-label" for="objectName">Nome do Objeto *</label>
@@ -986,34 +1191,6 @@
       </section>
     }
   </div>
-
-  <section id="regras" class="card card--rules">
-    <div class="card__header">
-      <h2>Boas Práticas</h2>
-    </div>
-    <div class="card__body rules-grid">
-      <div class="rule-item">
-        <span class="rule-item__num">1</span>
-        <p>Todo script deve ser criado/alterado usando o <strong>SQL Developer</strong>.</p>
-      </div>
-      <div class="rule-item">
-        <span class="rule-item__num">2</span>
-        <p>Não é permitido incluir comentários dentro do script (exceto COMMENT ON).</p>
-      </div>
-      <div class="rule-item">
-        <span class="rule-item__num">3</span>
-        <p>Utilizar <code>/</code> para separar comandos, sem espaços ou linhas em branco antes/depois.</p>
-      </div>
-      <div class="rule-item">
-        <span class="rule-item__num">5</span>
-        <p>Schema <strong>INFOSAUDE</strong> sempre informado nas instruções SQL.</p>
-      </div>
-      <div class="rule-item">
-        <span class="rule-item__num">9</span>
-        <p>Nomes de objetos não podem ultrapassar <strong>30 caracteres</strong>.</p>
-      </div>
-    </div>
-  </section>
 
   @if (showLeaveDialog()) {
     <div class="leave-dialog" role="dialog" aria-modal="true" aria-labelledby="leaveDialogTitle">

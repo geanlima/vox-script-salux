@@ -10,7 +10,12 @@ import {
   formatOracleDefaultValue,
   sizeIsRequired
 } from '../models/oracle-type.util';
-import { ScriptFormData, AddColumnEntry, TableColumn } from '../models/script-form.model';
+import {
+  ScriptFormData,
+  AddColumnEntry,
+  DmlColumnEntry,
+  TableColumn
+} from '../models/script-form.model';
 
 const SCHEMA = 'INFOSAUDE';
 
@@ -73,11 +78,24 @@ export class SqlGeneratorService {
       case 'CURSOR_NOT_NULL':
         commands = this.buildCursorNotNull(form, table, column);
         break;
+      case 'MODULO_PROCESSO':
+        commands = this.buildModuloProcesso(form);
+        break;
+      case 'INSERT':
+        commands = this.buildStandaloneInsert(form, table);
+        break;
+      case 'UPDATE':
+        commands = this.buildStandaloneUpdate(form, table);
+        break;
     }
 
     const sql = this.joinCommands(commands);
     const fileSuffix =
-      form.scriptType === 'ADD_COLUMN' ? this.resolveAddColumnFileSuffix(form) : column;
+      form.scriptType === 'ADD_COLUMN'
+        ? this.resolveAddColumnFileSuffix(form)
+        : form.scriptType === 'MODULO_PROCESSO'
+          ? this.normalize(form.mpProcesso)
+          : column;
     const fileName = this.buildFileName(form, table, fileSuffix);
 
     let rollbackSql = '';
@@ -129,6 +147,12 @@ export class SqlGeneratorService {
         return [`DROP TRIGGER ${SCHEMA}.${this.normalize(form.objectName)}`];
       case 'CURSOR_NOT_NULL':
         return [`ALTER TABLE ${SCHEMA}.${table} DROP COLUMN ${column}`];
+      case 'MODULO_PROCESSO':
+        return this.buildModuloProcessoRollback(form);
+      case 'INSERT':
+        return this.buildStandaloneInsertRollback(form, table);
+      case 'UPDATE':
+        return this.buildStandaloneUpdateRollback(form, table);
       default:
         // DROP_TABLE: não há como gerar o CREATE original automaticamente.
         return [];
@@ -202,7 +226,8 @@ export class SqlGeneratorService {
       errors.push({ field: 'cardNumber', message: 'Informe o número do card.' });
     }
 
-    if (!form.tableName.trim() && form.scriptType !== 'FUNCTION' && form.scriptType !== 'PROCEDURE') {
+    const tableOptionalTypes = ['FUNCTION', 'PROCEDURE', 'MODULO_PROCESSO'];
+    if (!form.tableName.trim() && !tableOptionalTypes.includes(form.scriptType)) {
       errors.push({ field: 'tableName', message: 'Informe o nome da tabela.' });
     }
 
@@ -298,6 +323,56 @@ export class SqlGeneratorService {
     if (form.scriptType === 'CURSOR_NOT_NULL') {
       if (!form.cursorDefaultValue.trim()) {
         errors.push({ field: 'cursorDefaultValue', message: 'Informe o valor padrão do cursor.' });
+      }
+    }
+
+    if (form.scriptType === 'MODULO_PROCESSO') {
+      if (!form.mpModulo.trim()) {
+        errors.push({ field: 'mpModulo', message: 'Informe o código do módulo.' });
+      }
+      if (!form.mpProcesso.trim()) {
+        errors.push({ field: 'mpProcesso', message: 'Informe o código do processo.' });
+      }
+      if (!form.mpDescricao.trim()) {
+        errors.push({ field: 'mpDescricao', message: 'Informe a descrição do processo.' });
+      }
+    }
+
+    if (form.scriptType === 'INSERT' || form.scriptType === 'UPDATE') {
+      const entries = form.dmlColumns.filter((entry) => entry.column.trim());
+      if (entries.length === 0) {
+        errors.push({ field: 'dmlColumns', message: 'Informe ao menos uma coluna com valor.' });
+      }
+
+      form.dmlColumns.forEach((entry, index) => {
+        const label = `Coluna ${index + 1}`;
+        if (!entry.column.trim() && entry.value.trim()) {
+          errors.push({ field: `dml_column_${index}`, message: `${label}: informe o nome da coluna.` });
+        }
+        this.validateObjectName(entry.column, `dml_column_${index}`, label, errors);
+      });
+
+      const names = entries.map((entry) => this.normalize(entry.column));
+      if (names.length !== new Set(names).size) {
+        errors.push({ field: 'dmlColumns', message: 'Existem colunas repetidas.' });
+      }
+
+      if (form.scriptType === 'UPDATE' && !form.dmlWhere.trim()) {
+        errors.push({
+          field: 'dmlWhere',
+          message: 'Informe a condição WHERE do UPDATE (use 1 = 1 para atualizar todas as linhas).'
+        });
+      }
+
+      if (form.scriptType === 'UPDATE' && form.generateRollback) {
+        form.dmlColumns.forEach((entry, index) => {
+          if (entry.column.trim() && !(entry.rollbackValue ?? '').trim()) {
+            errors.push({
+              field: `dml_rollback_${index}`,
+              message: `Coluna ${index + 1}: informe o valor anterior para o rollback (use NULL se for o caso).`
+            });
+          }
+        });
       }
     }
 
@@ -719,6 +794,103 @@ export class SqlGeneratorService {
     );
 
     return commands;
+  }
+
+  private buildModuloProcesso(form: ScriptFormData): string[] {
+    const modulo = form.mpModulo.trim();
+    const processo = form.mpProcesso.trim();
+    const descricao = this.escapeComment(form.mpDescricao);
+    const operacao = form.mpOperacaoVinculada.trim()
+      ? `'${form.mpOperacaoVinculada.trim()}'`
+      : 'NULL';
+    const inLogar = form.mpInLogar.trim().toUpperCase() === 'S' ? 'S' : 'N';
+    const grupoAcesso = form.mpGrupoAcesso || 1;
+
+    const funcionarioInsert = (funcionario: string): string =>
+      `INSERT INTO infosaude.funcionario_processo\n` +
+      `(cd_funcionario, cd_hospital, cd_modulo, cd_gr_acesso, cd_processo, id_inclusao, id_alteracao, id_exclusao, in_ativo)\n` +
+      `   SELECT '${funcionario}', cd_hospital, '${modulo}', NULL, '${processo}', 'S', 'S', 'S', 'S'\n` +
+      `     FROM hospital\n` +
+      `    WHERE in_ativo = 'S'`;
+
+    return [
+      `INSERT INTO infosaude.MODULO_PROCESSO (CD_MODULO,CD_PROCESSO,DS_PROCESSO,OPERACAO_VINCULADA,IN_LOGAR)\nVALUES ('${modulo}','${processo}','${descricao}',${operacao},'${inLogar}')`,
+      `ALTER TRIGGER ${SCHEMA}.GRUPO_ACESSO_PROCESSO_TI DISABLE`,
+      `INSERT INTO infosaude.grupo_acesso_processo (cd_modulo, cd_gr_acesso, cd_processo) VALUES('${modulo}',${grupoAcesso},'${processo}')`,
+      `ALTER TRIGGER ${SCHEMA}.GRUPO_ACESSO_PROCESSO_TI ENABLE`,
+      funcionarioInsert('INFO'),
+      funcionarioInsert('SUPER')
+    ];
+  }
+
+  private buildModuloProcessoRollback(form: ScriptFormData): string[] {
+    const modulo = form.mpModulo.trim();
+    const processo = form.mpProcesso.trim();
+    const filter = `cd_modulo = '${modulo}'\n  AND cd_processo = '${processo}'`;
+
+    return [
+      `DELETE FROM infosaude.funcionario_processo\nWHERE ${filter}`,
+      `ALTER TRIGGER ${SCHEMA}.GRUPO_ACESSO_PROCESSO_TI DISABLE`,
+      `DELETE FROM infosaude.grupo_acesso_processo\nWHERE ${filter}`,
+      `ALTER TRIGGER ${SCHEMA}.GRUPO_ACESSO_PROCESSO_TI ENABLE`,
+      `DELETE FROM infosaude.modulo_processo\nWHERE ${filter}`
+    ];
+  }
+
+  private buildStandaloneInsert(form: ScriptFormData, table: string): string[] {
+    const entries = this.filledDmlColumns(form);
+    const columns = entries.map((entry) => this.normalize(entry.column)).join(', ');
+    const values = entries.map((entry) => this.formatDmlValue(entry)).join(', ');
+
+    return [`INSERT INTO ${SCHEMA}.${table} (${columns})\nVALUES (${values})`];
+  }
+
+  private buildStandaloneUpdate(form: ScriptFormData, table: string): string[] {
+    const entries = this.filledDmlColumns(form);
+    const assignments = entries
+      .map((entry) => `${this.normalize(entry.column)} = ${this.formatDmlValue(entry)}`)
+      .join(',\n    ');
+
+    return [`UPDATE ${SCHEMA}.${table}\nSET ${assignments}\nWHERE ${form.dmlWhere.trim()}`];
+  }
+
+  private buildStandaloneInsertRollback(form: ScriptFormData, table: string): string[] {
+    const conditions = this.filledDmlColumns(form)
+      .map((entry) => {
+        const column = this.normalize(entry.column);
+        const value = this.formatDmlValue(entry);
+        return value === 'NULL' ? `${column} IS NULL` : `${column} = ${value}`;
+      })
+      .join('\n  AND ');
+
+    return [`DELETE FROM ${SCHEMA}.${table}\nWHERE ${conditions}`];
+  }
+
+  private buildStandaloneUpdateRollback(form: ScriptFormData, table: string): string[] {
+    const assignments = this.filledDmlColumns(form)
+      .map(
+        (entry) =>
+          `${this.normalize(entry.column)} = ${this.formatDmlRawValue(entry.dataTypeBase, entry.rollbackValue)}`
+      )
+      .join(',\n    ');
+
+    return [`UPDATE ${SCHEMA}.${table}\nSET ${assignments}\nWHERE ${form.dmlWhere.trim()}`];
+  }
+
+  private filledDmlColumns(form: ScriptFormData): DmlColumnEntry[] {
+    return form.dmlColumns.filter((entry) => entry.column.trim());
+  }
+
+  private formatDmlValue(entry: DmlColumnEntry): string {
+    return this.formatDmlRawValue(entry.dataTypeBase, entry.value);
+  }
+
+  private formatDmlRawValue(dataTypeBase: string, rawValue: string): string {
+    const value = rawValue.trim();
+    if (!value || value.toUpperCase() === 'NULL') {
+      return 'NULL';
+    }
+    return formatOracleDefaultValue(dataTypeBase, value);
   }
 
   private joinCommands(commands: string[]): string {

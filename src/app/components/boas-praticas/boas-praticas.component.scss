@@ -1,0 +1,104 @@
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 600;
+    color: var(--portal-text);
+  }
+
+  &__desc {
+    margin: 0;
+    color: var(--portal-text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
+
+.card {
+  background: var(--portal-card-bg);
+  border: 1px solid var(--portal-border);
+  border-radius: 4px;
+  box-shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.06);
+  margin-bottom: 20px;
+
+  &__header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--portal-border);
+
+    h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--portal-text);
+    }
+  }
+
+  &__body {
+    padding: 20px;
+  }
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+
+  @media (min-width: 576px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 992px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.rule-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: var(--portal-footer-bg);
+  border-radius: 4px;
+
+  &__num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--portal-primary);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 50%;
+  }
+
+  p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--portal-text);
+    line-height: 1.5;
+  }
+
+  code {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 575px) {
+  .card__body,
+  .card__header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

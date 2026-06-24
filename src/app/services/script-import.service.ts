@@ -40,9 +40,11 @@ const FILENAME_TYPE_MAP: Record<string, ScriptType> = {
   function: 'FUNCTION',
   procedure: 'PROCEDURE',
   trigger: 'TRIGGER',
-  cursor_not_null: 'CURSOR_NOT_NULL'
+  cursor_not_null: 'CURSOR_NOT_NULL',
+  modulo_processo: 'MODULO_PROCESSO',
+  insert: 'INSERT',
+  update: 'UPDATE'
 };
-
 @Injectable({ providedIn: 'root' })
 export class ScriptImportService {
   analyze(sql: string, fileName?: string): ScriptImportAnalysis {
@@ -213,6 +215,9 @@ export class ScriptImportService {
     if (/CREATE\s+OR\s+REPLACE\s+TRIGGER\b/i.test(sql)) {
       return 'TRIGGER';
     }
+    if (/INSERT\s+INTO\s+(?:INFOSAUDE\.)?MODULO_PROCESSO\b/i.test(sql)) {
+      return 'MODULO_PROCESSO';
+    }
     if (/CREATE\s+TABLE\b/i.test(sql)) {
       return 'CREATE_TABLE';
     }
@@ -235,6 +240,13 @@ export class ScriptImportService {
     }
     if (/ALTER\s+TABLE\b/i.test(first) && /\bADD\b/i.test(first) && !/ADD\s+CONSTRAINT/i.test(first)) {
       return 'ADD_COLUMN';
+    }
+
+    if (/^\s*INSERT\s+INTO\b/i.test(first)) {
+      return 'INSERT';
+    }
+    if (/^\s*UPDATE\b/i.test(first)) {
+      return 'UPDATE';
     }
 
     return null;
@@ -268,6 +280,11 @@ export class ScriptImportService {
         return this.parseTrigger(statements[0]?.text ?? '', fullSql);
       case 'CURSOR_NOT_NULL':
         return this.parseCursorNotNull(statements);
+      case 'MODULO_PROCESSO':
+        return this.parseModuloProcesso(statements);
+      case 'INSERT':
+      case 'UPDATE':
+        return { fields: {}, errors: ['Importação automática não disponível para este tipo. Preencha manualmente.'] };
       default:
         return { fields: {}, errors: ['Tipo de script não suportado para importação.'] };
     }
@@ -540,6 +557,37 @@ export class ScriptImportService {
     };
   }
 
+  private parseModuloProcesso(statements: { text: string }[]): { fields: Partial<ScriptFormData>; errors: string[] } {
+    const insertStmt = statements.find((s) => /INSERT\s+INTO\s+(?:INFOSAUDE\.)?MODULO_PROCESSO/i.test(s.text));
+    if (!insertStmt) {
+      return { fields: {}, errors: ['Comando INSERT em MODULO_PROCESSO não encontrado.'] };
+    }
+
+    const match = insertStmt.text.match(
+      /VALUES\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*,\s*'((?:[^']|'')*)'\s*,\s*(NULL|'[^']*')\s*,\s*'([SN])'\s*\)/is
+    );
+    if (!match) {
+      return { fields: {}, errors: ['Não foi possível interpretar o INSERT em MODULO_PROCESSO.'] };
+    }
+
+    const grupoStmt = statements.find((s) => /INSERT\s+INTO\s+(?:INFOSAUDE\.)?grupo_acesso_processo/i.test(s.text));
+    const grupoMatch = grupoStmt?.text.match(
+      /VALUES\s*\(\s*'([^']*)'\s*,\s*(\d+)\s*,\s*'([^']*)'\s*\)/is
+    );
+
+    return {
+      fields: {
+        mpModulo: match[1],
+        mpProcesso: match[2],
+        mpDescricao: match[3].replace(/''/g, "'"),
+        mpOperacaoVinculada: match[4].toUpperCase() === 'NULL' ? '' : match[4].replace(/^'|'$/g, ''),
+        mpInLogar: match[5],
+        mpGrupoAcesso: grupoMatch ? Number.parseInt(grupoMatch[2], 10) || 1 : 1
+      },
+      errors: []
+    };
+  }
+
   private parseCursorNotNull(statements: { text: string }[]): { fields: Partial<ScriptFormData>; errors: string[] } {
     const addStmt = statements.find((s) => /ALTER\s+TABLE/i.test(s.text) && /\bADD\b/i.test(s.text));
     const declareStmt = statements.find((s) => /\bDECLARE\b/i.test(s.text) && /\bCURSOR\b/i.test(s.text));
@@ -667,7 +715,10 @@ export class ScriptImportService {
       FUNCTION: 'Function',
       PROCEDURE: 'Procedure',
       TRIGGER: 'Trigger',
-      CURSOR_NOT_NULL: 'Cursor (NOT NULL)'
+      CURSOR_NOT_NULL: 'Cursor (NOT NULL)',
+      MODULO_PROCESSO: 'Módulo Processo',
+      INSERT: 'Insert (avulso)',
+      UPDATE: 'Update (avulso)'
     };
     return labels[type];
   }

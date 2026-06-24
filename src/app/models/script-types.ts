@@ -9,7 +9,10 @@ export type ScriptType =
   | 'FUNCTION'
   | 'PROCEDURE'
   | 'TRIGGER'
-  | 'CURSOR_NOT_NULL';
+  | 'CURSOR_NOT_NULL'
+  | 'MODULO_PROCESSO'
+  | 'INSERT'
+  | 'UPDATE';
 
 export interface ScriptTypeOption {
   value: ScriptType;
@@ -72,5 +75,20 @@ export const SCRIPT_TYPE_OPTIONS: ScriptTypeOption[] = [
     value: 'CURSOR_NOT_NULL',
     label: 'Cursor (NOT NULL)',
     description: 'Script completo para coluna NOT NULL em tabela existente'
+  },
+  {
+    value: 'MODULO_PROCESSO',
+    label: 'Módulo Processo',
+    description: 'INSERT em MODULO_PROCESSO, GRUPO_ACESSO_PROCESSO e FUNCIONARIO_PROCESSO'
+  },
+  {
+    value: 'INSERT',
+    label: 'Insert (avulso)',
+    description: 'Script de INSERT com colunas, tipos e valores'
+  },
+  {
+    value: 'UPDATE',
+    label: 'Update (avulso)',
+    description: 'Script de UPDATE com colunas, tipos e valores'
   }
 ];

@@ -1,0 +1,73 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Boas Práticas</h1>
+    <p class="page-header__desc">
+      Regras do <strong>Cadastros Gerais</strong> para criação e formatação de scripts Oracle no schema
+      <strong>INFOSAUDE</strong>.
+    </p>
+  </div>
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Formatação e elaboração</h2>
+    </div>
+    <div class="card__body rules-grid">
+      <div class="rule-item">
+        <span class="rule-item__num">1</span>
+        <p>Todo script deve ser criado/alterado usando o <strong>SQL Developer</strong>.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">2</span>
+        <p>Não é permitido incluir comentários dentro do script (exceto <code>COMMENT ON</code>).</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">3</span>
+        <p>Utilizar <code>/</code> para separar comandos, sem espaços ou linhas em branco antes/depois.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">4</span>
+        <p>O arquivo deve terminar com <code>/</code> na última linha.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">5</span>
+        <p>Schema <strong>INFOSAUDE</strong> sempre informado nas instruções SQL.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">6</span>
+        <p>Ponto e vírgula (<code>;</code>) apenas dentro de blocos PL/SQL.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">7</span>
+        <p>Nomes de objetos não podem ultrapassar <strong>30 caracteres</strong>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Nomenclatura e objetos</h2>
+    </div>
+    <div class="card__body rules-grid">
+      <div class="rule-item">
+        <span class="rule-item__num">8</span>
+        <p><code>CREATE SEQUENCE</code> deve usar o prefixo <code>SEQ_</code>.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">9</span>
+        <p>Constraints: <code>PK_</code>, <code>FK_</code> e <code>CKC_</code> com nomenclatura correta.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">10</span>
+        <p><code>CREATE TABLE</code> deve incluir <code>COMMENT</code>, <code>GRANT</code> e <code>PUBLIC SYNONYM</code>.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">11</span>
+        <p><code>COMMENT ON TABLE</code> deve conter a referência ao schema <strong>INFOSAUDE</strong>.</p>
+      </div>
+      <div class="rule-item">
+        <span class="rule-item__num">12</span>
+        <p>Arquivo gerado no padrão: <code>CARD_&lt;numero&gt;_&lt;tipo&gt;_&lt;campo&gt;.sql</code>.</p>
+      </div>
+    </div>
+  </section>
+</div>

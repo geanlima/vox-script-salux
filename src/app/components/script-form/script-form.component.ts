@@ -10,9 +10,11 @@ import { SCRIPT_TYPE_OPTIONS, ScriptType } from '../../models/script-types';
 import {
   createEmptyAddColumn,
   createEmptyColumn,
+  createEmptyDmlColumn,
   createEmptyFormData,
   AddColumnEntry,
   ColumnConstraintType,
+  DmlColumnEntry,
   ScriptFormData,
   TableColumn
 } from '../../models/script-form.model';
@@ -176,6 +178,29 @@ export class ScriptFormComponent implements OnInit {
     this.form.update((current) => ({
       ...current,
       addColumns: current.addColumns.filter((_, i) => i !== index)
+    }));
+  }
+
+  addDmlColumn(): void {
+    this.form.update((current) => ({
+      ...current,
+      dmlColumns: [...current.dmlColumns, createEmptyDmlColumn()]
+    }));
+  }
+
+  removeDmlColumn(index: number): void {
+    this.form.update((current) => ({
+      ...current,
+      dmlColumns: current.dmlColumns.filter((_, i) => i !== index)
+    }));
+  }
+
+  updateDmlColumn(index: number, field: keyof DmlColumnEntry, value: string): void {
+    this.form.update((current) => ({
+      ...current,
+      dmlColumns: current.dmlColumns.map((entry, i) =>
+        i === index ? { ...entry, [field]: value } : entry
+      )
     }));
   }
 
@@ -343,6 +368,13 @@ export class ScriptFormComponent implements OnInit {
     this.scriptStorage.getById(id).subscribe({
       next: (saved) => {
         const formData = { ...createEmptyFormData(), ...saved.formData };
+        formData.dmlColumns = (formData.dmlColumns ?? []).map((entry) => ({
+          ...createEmptyDmlColumn(),
+          ...entry
+        }));
+        if (formData.dmlColumns.length === 0) {
+          formData.dmlColumns = [createEmptyDmlColumn()];
+        }
         this.form.set(formData);
         this.generatedSql.set(saved.generatedSql);
         this.fileName.set(saved.fileName);

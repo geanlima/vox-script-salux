@@ -23,7 +23,8 @@ if (-not $env:DOCKERHUB_USER) {
 $env:IMAGE_TAG = $Tag
 
 Write-Host "Build: $($env:DOCKERHUB_USER)/vox-script-salux:$Tag e api..."
-docker compose build
+docker compose build --no-cache vox-script-salux
+docker compose build api
 
 Write-Host "Push para Docker Hub..."
 docker compose push

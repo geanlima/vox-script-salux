@@ -107,12 +107,6 @@
   &--preview {
     grid-column: 1 / -1;
   }
-
-  &--rules {
-    .card__body {
-      padding: 12px 20px 20px;
-    }
-  }
 }
 
 .form-section {
@@ -738,57 +732,6 @@
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.rules-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-
-  @media (min-width: 576px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  @media (min-width: 992px) {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.rule-item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px;
-  background: var(--portal-footer-bg);
-  border-radius: 4px;
-
-  &__num {
-    flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--portal-primary);
-    color: #fff;
-    font-size: 12px;
-    font-weight: 700;
-    border-radius: 50%;
-  }
-
-  p {
-    margin: 4px 0 0;
-    font-size: 13px;
-    color: var(--portal-text);
-    line-height: 1.5;
-  }
-
-  code {
-    background: #fff;
-    padding: 1px 5px;
-    border-radius: 2px;
-    font-size: 12px;
-  }
 }
 
 @media (max-width: 575px) {
