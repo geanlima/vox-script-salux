@@ -53,35 +53,37 @@ Validador portado do PowerBuilder (`w_sintaxe` — Cadastros Gerais V7). Cole o 
 
 - [Node.js](https://nodejs.org/) 18+ (recomendado 20+)
 - npm 9+
-- Docker + Docker Compose (para deploy com pré-validação Oracle)
+- Docker + Docker Compose (para deploy)
 
-## Deploy com Docker (frontend + API + Oracle de validação)
+## Deploy com Docker (frontend + API + SQLite)
 
 ### Fluxo
 
 ```
-[PC Windows]  build + push     [Docker Hub]     pull + up     [GSLServer]
+[PC Windows]  build + push     [Docker Hub]     pull + up     [VPS Locaweb]
      │              ──────────────────►              ───────────────►
-     │         geandasilvalima/vox-script-salux*                    http://191.252.181.56
+    │         geansilvalima/vox-script-salux*                       http://179.188.193.186
 ```
 
-O stack sobe 3 containers:
+O perfil de produção para VPS pequena sobe 2 containers e mantém os dados de autenticação/scripts em um volume SQLite persistente:
 
 | Container | Função |
 |-----------|--------|
 | `vox-script-salux` | Frontend Angular (nginx) |
-| `api` | Backend Node.js — validação Oracle |
-| `oracle` | Oracle XE — apenas `DBMS_SQL.PARSE` (sintaxe) |
+| `api` | Backend Node.js — login e armazenamento SQLite; Oracle opcional para pré-validação |
+| volume `vox-script-salux-data` | Banco SQLite persistente (usuários e scripts salvos) |
+
+O Oracle XE não é iniciado no servidor de 1 GB, pois causa `ORA-27104` e reinicialização. Sem uma conexão Oracle externa configurada, a pré-validação Oracle fica indisponível; a validação estática da aplicação continua funcionando.
 
 ### Ambiente de produção (GSLServer)
 
 | Item | Valor |
 |------|-------|
-| Docker Hub | `geandasilvalima` |
-| Imagens | `geandasilvalima/vox-script-salux` · `geandasilvalima/vox-script-salux-api` |
-| Servidor | GSLServer (Locaweb) — `vps66927.publiccloud.com.br` |
-| IP / SSH | `root@191.252.181.56` |
-| URL | http://191.252.181.56 |
+| Docker Hub | `geansilvalima` |
+| Imagens | `geansilvalima/vox-script-salux` · `geansilvalima/vox-script-salux-api` |
+| Servidor | Locaweb — `vps73705.publiccloud.com.br` |
+| IP / SSH | `root@179.188.193.186` |
+| URL | http://179.188.193.186 |
 | Pasta no servidor | `/opt/vox-script-salux` |
 
 ### Onde executar cada comando
@@ -90,11 +92,11 @@ O stack sobe 3 containers:
 |------|------------|
 | `docker compose up --build` | **PC Windows** (pasta do projeto) |
 | `.\scripts\docker-publish.ps1` | **PC Windows** |
-| `ssh root@191.252.181.56` | **PC Windows** → abre sessão no servidor |
+| `ssh root@179.188.193.186` | **PC Windows** → abre sessão no servidor |
 | `docker compose -f docker-compose.prod.yml ...` | **Dentro do SSH** (servidor) |
-| `scp arquivo root@191...` | **PC Windows** (terminal **fora** do SSH) |
+| `scp arquivo root@179.188.193.186:...` | **PC Windows** (terminal **fora** do SSH) |
 
-> **Atenção:** não rode `scp` dentro da sessão SSH. Lá você já está no servidor — os arquivos `.yml` e `.env` ficam no seu PC (`C:\Projetos\GSL\vox-script-salux`), não em `root@vps66927`.
+> **Atenção:** não rode `scp` dentro da sessão SSH. Lá você já está no servidor — os arquivos `.yml` e `.env` ficam no seu PC (`C:\Projetos\GSL\vox-script-salux`), não no servidor remoto.
 
 ---
 
@@ -115,7 +117,7 @@ docker compose up --build -d
 
 ### 2. Publicar imagens no Docker Hub (PC)
 
-Antes do primeiro deploy no servidor, publique as imagens:
+As imagens atuais já estão publicadas em `geansilvalima`. Para publicar uma nova versão após mudanças no código, confirme que `DOCKERHUB_USER=geansilvalima` está no `.env` e execute:
 
 ```powershell
 cd C:\Projetos\GSL\vox-script-salux
@@ -138,8 +140,10 @@ Com versão fixa (recomendado):
 No **PC**:
 
 ```powershell
-ssh root@191.252.181.56
+ssh root@179.188.193.186
 ```
+
+Na primeira conexão, confira no painel Locaweb se o fingerprint SSH exibido corresponde ao apresentado no terminal; só então aceite a chave. Não desative a verificação de chave do SSH.
 
 No **servidor**:
 
@@ -165,82 +169,19 @@ cp deploy/server.env.example .env
 nano .env                           # altere as senhas Oracle
 ```
 
-**Opção B — Criar arquivos direto no servidor**
-
-No **servidor** (`ssh root@191.252.181.56`), cole o bloco abaixo inteiro:
-
-```bash
-cd /opt/vox-script-salux
-
-cat > docker-compose.prod.yml << 'EOF'
-services:
-  vox-script-salux:
-    image: ${DOCKERHUB_USER}/vox-script-salux:${IMAGE_TAG:-latest}
-    ports:
-      - "${WEB_PORT:-80}:80"
-    depends_on:
-      api:
-        condition: service_started
-    restart: unless-stopped
-
-  api:
-    image: ${DOCKERHUB_USER}/vox-script-salux-api:${IMAGE_TAG:-latest}
-    environment:
-      ORACLE_USER: ${ORACLE_USER:-validator}
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
-      ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-oracle:1521/XEPDB1}
-    depends_on:
-      oracle:
-        condition: service_healthy
-    restart: unless-stopped
-
-  oracle:
-    image: gvenzl/oracle-xe:21-slim-faststart
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-ValidatorAdmin1}
-      APP_USER: ${ORACLE_USER:-validator}
-      APP_USER_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
-    volumes:
-      - oracle-validator-data:/opt/oracle/oradata
-    expose:
-      - "1521"
-    healthcheck:
-      test: ["CMD", "healthcheck.sh"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
-    shm_size: "1gb"
-    restart: unless-stopped
-
-volumes:
-  oracle-validator-data:
-EOF
-
-cat > .env << 'EOF'
-DOCKERHUB_USER=geandasilvalima
-IMAGE_TAG=latest
-WEB_PORT=80
-ORACLE_USER=validator
-ORACLE_PASSWORD=AltereEstaSenha1
-ORACLE_ADMIN_PASSWORD=AltereEstaSenhaAdmin1
-ORACLE_CONNECT_STRING=oracle:1521/XEPDB1
-EOF
-
-nano .env
-```
-
-**Opção C — `scp` a partir do PC**
+**Opção B — `scp` a partir do PC**
 
 Abra um **novo** PowerShell no Windows (sem estar no SSH):
 
 ```powershell
 cd C:\Projetos\GSL\vox-script-salux
-scp docker-compose.prod.yml root@191.252.181.56:/opt/vox-script-salux/
-scp deploy/server.env.example root@191.252.181.56:/opt/vox-script-salux/.env
+scp docker-compose.prod.yml root@179.188.193.186:/opt/vox-script-salux/
+scp deploy/server.env.example root@179.188.193.186:/opt/vox-script-salux/.env
 ```
 
-Se `scp` não for reconhecido, instale **OpenSSH Client** em *Configurações → Aplicativos → Recursos opcionais*, ou use a **Opção A** ou **B**.
+Depois, conecte ao servidor e ajuste `/opt/vox-script-salux/.env`. Defina `DOCKERHUB_USER=geansilvalima`, `WEB_PORT=80` e troque `MASTER_PASSWORD` e `AUTH_SECRET` por valores fortes e exclusivos. Não configure `ORACLE_CONNECT_STRING=oracle:1521/XEPDB1`: o Compose de produção não inicia Oracle local. Configure Oracle somente se houver uma instância externa.
+
+Se `scp` não for reconhecido, instale **OpenSSH Client** em *Configurações → Aplicativos → Recursos opcionais*, ou use a Opção A (Git).
 
 ---
 
@@ -250,12 +191,13 @@ No **servidor**:
 
 ```bash
 cd /opt/vox-script-salux
-docker login
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Aguarde **3–5 minutos** na primeira subida (download + init do Oracle).
+As imagens são públicas; `docker login` no servidor não é necessário, a menos que os repositórios se tornem privados. Confirme `DOCKERHUB_USER=geansilvalima` no `.env` e remova as antigas linhas de Oracle local (`ORACLE_CONNECTION_MODE=connect_string` e `ORACLE_CONNECT_STRING=oracle:1521/XEPDB1`). Configure Oracle apenas se houver uma instância externa.
+
+A primeira subida baixa apenas frontend e API; os dados ficam no volume SQLite `vox-script-salux-data`.
 
 Verificar:
 
@@ -264,7 +206,7 @@ docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f api
 ```
 
-Acesse: **http://191.252.181.56**
+Acesse: **http://179.188.193.186**
 
 ---
 
@@ -290,14 +232,16 @@ IMAGE_TAG=1.0.0
 | `scp: No such file or directory` | Comando rodado **dentro** do SSH | Use Opção B no servidor ou `scp` em terminal **local** no PC |
 | `scp` não reconhecido no Windows | OpenSSH não instalado | Opção A (git) ou Opção B (`cat`) |
 | Porta 80 em uso | Outro serviço na VPS | Defina `WEB_PORT=8080` no `.env` e acesse `:8080` |
-| Container Oracle reinicia | VPS com 2 GB RAM | Crie swap ou faça upgrade de RAM na Locaweb |
+| Oracle não disponível | O perfil de produção de 1 GB não executa Oracle XE | Login/CRUD usam SQLite; para pré-validação Oracle, configure uma instância Oracle externa |
 | Imagens não encontradas | Push não feito | Rode `.\scripts\docker-publish.ps1` no PC antes do `pull` |
+ | `denied` ao publicar imagens | Usuário do Docker Hub sem permissão no namespace | Confirme `docker login` com a conta `geansilvalima` e `DOCKERHUB_USER=geansilvalima` no `.env` |
+ | Imagens não encontradas | Namespace/tag divergente ou push não concluído | Confira `DOCKERHUB_USER` e `IMAGE_TAG` no `.env` local e do servidor; publique antes do `pull` |
 
 ### Observações
 
-- O Oracle XE usa ~1 GB de RAM. O GSLServer tem **2 GB** — monitore com `docker stats`.
-- Altere as senhas Oracle no `.env` do servidor antes de produção.
-- O banco de validação **não** armazena dados reais — só analisa sintaxe.
+- O perfil de 1 GB usa SQLite para usuários e scripts salvos. O volume Docker `vox-script-salux-data` precisa ser preservado em atualizações.
+- Oracle é opcional e deve ser uma instância externa para validar sintaxe/consultar metadados; o contêiner Oracle XE não faz parte do Compose de produção leve.
+- Senhas SQLite/administrador devem ser definidas em `MASTER_PASSWORD` e `AUTH_SECRET` no `.env` de produção.
 - Objetos inexistentes (tabelas, sequences) **não** geram erro; apenas falhas reais de sintaxe.
 
 ### Arquivos de deploy
@@ -305,7 +249,7 @@ IMAGE_TAG=1.0.0
 | Arquivo | Descrição |
 |---------|-----------|
 | `docker-compose.yml` | Build local + push |
-| `docker-compose.prod.yml` | Servidor — pull sem build |
+| `docker-compose.prod.yml` | Servidor — frontend + API/SQLite, pull sem build |
 | `.env.example` | Variáveis para desenvolvimento local |
 | `deploy/server.env.example` | Modelo de `.env` para o servidor |
 | `deploy/setup-server.sh` | Copia `server.env.example` → `.env` no servidor |

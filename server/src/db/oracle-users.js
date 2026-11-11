@@ -1,5 +1,5 @@
 import oracledb from 'oracledb';
-import { waitForOraclePool, withOracleConnection } from '../oracle-validator.js';
+import { isOracleReady, withOracleConnection } from '../oracle-validator.js';
 import { hashPassword } from '../auth/auth-utils.js';
 
 const MASTER_USERNAME = (process.env.MASTER_USERNAME ?? 'master').trim().toLowerCase();
@@ -11,8 +11,6 @@ export async function initUserSchema() {
   if (schemaInitialized) {
     return;
   }
-
-  await waitForOraclePool();
 
   await withOracleConnection(async (connection) => {
     const exists = await connection.execute(
@@ -66,7 +64,7 @@ function mapUserRow(row) {
     username: row.USERNAME,
     displayName: row.DISPLAY_NAME,
     passwordHash: row.PASSWORD_HASH,
-    role: row.ROLE,
+    role: String(row.ROLE ?? 'user').toLowerCase(),
     createdAt: row.CREATED_AT
   };
 }

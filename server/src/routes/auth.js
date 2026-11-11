@@ -7,8 +7,7 @@ import {
   findUserByUsername,
   initUserSchema,
   updateUserPassword
-} from '../db/oracle-users.js';
-import { isOracleConfigured, waitForOraclePool } from '../oracle-validator.js';
+} from '../db/sqlite-users.js';
 
 const router = Router();
 
@@ -24,19 +23,12 @@ function publicUser(user) {
 }
 
 async function ensureAuthStorageReady(_req, res, next) {
-  if (!isOracleConfigured()) {
-    return res.status(503).json({
-      message: 'Banco indisponível. Configure ORACLE_USER, ORACLE_PASSWORD e ORACLE_CONNECT_STRING.'
-    });
-  }
-
   try {
-    await waitForOraclePool();
     await initUserSchema();
-    next();
+    return next();
   } catch (error) {
     return res.status(503).json({
-      message: error?.message ?? 'Oracle indisponível para autenticação.'
+      message: error?.message ?? 'Armazenamento local indisponível para autenticação.'
     });
   }
 }

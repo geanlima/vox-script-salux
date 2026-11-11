@@ -21,12 +21,14 @@ export class AuthService {
 
   readonly currentUser = this.currentUserSignal.asReadonly();
   readonly isAuthenticated = computed(() => this.currentUserSignal() !== null);
-  readonly isMaster = computed(() => this.currentUserSignal()?.role === 'master');
+  readonly isMaster = computed(() => this.currentUserSignal()?.role?.toLowerCase() === 'master');
 
   constructor(
     private readonly http: HttpClient,
     private readonly router: Router
-  ) {}
+  ) {
+    this.refreshSessionIfNeeded();
+  }
 
   get token(): string | null {
     return localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
@@ -67,8 +69,31 @@ export class AuthService {
     // localStorage persiste após fechar o navegador; sessionStorage não.
     const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem(TOKEN_KEY, response.token);
-    storage.setItem(USER_KEY, JSON.stringify(response.user));
-    this.currentUserSignal.set(response.user);
+    storage.setItem(USER_KEY, JSON.stringify(this.normalizeUser(response.user)));
+    this.currentUserSignal.set(this.normalizeUser(response.user));
+  }
+
+  private refreshSessionIfNeeded(): void {
+    if (!this.token) {
+      return;
+    }
+
+    this.http.get<AuthUser>(`${this.baseUrl}/me`).subscribe({
+      next: (user) => {
+        const normalized = this.normalizeUser(user);
+        const storage = localStorage.getItem(TOKEN_KEY) ? localStorage : sessionStorage;
+        storage.setItem(USER_KEY, JSON.stringify(normalized));
+        this.currentUserSignal.set(normalized);
+      },
+      error: () => this.clearSession()
+    });
+  }
+
+  private normalizeUser(user: AuthUser): AuthUser {
+    return {
+      ...user,
+      role: (user.role ?? 'user').toLowerCase() as AuthUser['role']
+    };
   }
 
   private restoreUser(): AuthUser | null {
@@ -81,7 +106,7 @@ export class AuthService {
     }
 
     try {
-      return JSON.parse(userRaw) as AuthUser;
+      return this.normalizeUser(JSON.parse(userRaw) as AuthUser);
     } catch {
       return null;
     }

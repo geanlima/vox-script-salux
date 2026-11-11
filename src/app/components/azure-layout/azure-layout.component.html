@@ -61,6 +61,16 @@
         <span class="portal-nav__icon">&#10003;</span>
         Validação
       </a>
+      @if (isMaster()) {
+        <a
+          class="portal-nav__item"
+          routerLink="/comparar"
+          routerLinkActive="portal-nav__item--active"
+        >
+          <span class="portal-nav__icon">&#8644;</span>
+          Comparar
+        </a>
+      }
       <a class="portal-nav__item" routerLink="/boas-praticas" routerLinkActive="portal-nav__item--active">
         <span class="portal-nav__icon">&#9432;</span>
         Boas Práticas
@@ -102,6 +112,16 @@
           <span class="portal-nav__icon">&#10003;</span>
           Validação
         </a>
+        @if (isMaster()) {
+          <a
+            class="portal-nav__item"
+            routerLink="/comparar"
+            routerLinkActive="portal-nav__item--active"
+          >
+            <span class="portal-nav__icon">&#8644;</span>
+            Comparar Estruturas
+          </a>
+        }
         <a class="portal-nav__item" routerLink="/boas-praticas" routerLinkActive="portal-nav__item--active">
           <span class="portal-nav__icon">&#9432;</span>
           Boas Práticas

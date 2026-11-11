@@ -22,3 +22,11 @@ export function requireAuth(req, res, next) {
 export function isMaster(user) {
   return user?.role === 'master';
 }
+
+export function requireMaster(req, res, next) {
+  if (isMaster(req.user)) {
+    return next();
+  }
+
+  return res.status(403).json({ message: 'Acesso restrito a usuários MASTER.' });
+}

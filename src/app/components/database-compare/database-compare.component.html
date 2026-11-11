@@ -1,0 +1,681 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Comparar Estruturas</h1>
+    <p class="page-header__desc">
+      Compare a estrutura de tabelas entre bases Oracle. Selecione origem e destino, escolha comparar um
+      schema inteiro ou uma tabela específica, e visualize as diferenças de colunas e chaves primárias.
+    </p>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert alert--error" role="alert">{{ errorMessage() }}</div>
+  }
+
+  @if (sameConnectionSelected()) {
+    <div class="alert alert--warning" role="status">
+      Origem e destino estão com a mesma conexão (<strong>{{ sameConnectionLabel() }}</strong>).
+      Selecione bases diferentes para comparar.
+    </div>
+  }
+
+  <section class="card">
+    <div class="card__header">
+      <h2>Configuração</h2>
+      <span class="card__hint">Selecione as conexões e o escopo da comparação</span>
+    </div>
+    <div class="card__body">
+      <div class="mode-toggle mode-toggle--source">
+        <span class="mode-toggle__label">Origem das conexões:</span>
+        <label class="mode-toggle__option">
+          <input
+            type="radio"
+            name="connectionSource"
+            value="local_tns"
+            [ngModel]="connectionSource()"
+            (ngModelChange)="connectionSource.set($event); onConnectionSourceChange()"
+          />
+          TNS da máquina (alias)
+        </label>
+        <label class="mode-toggle__option">
+          <input
+            type="radio"
+            name="connectionSource"
+            value="salux_ini"
+            [ngModel]="connectionSource()"
+            (ngModelChange)="connectionSource.set($event); onConnectionSourceChange()"
+          />
+          INI Salux + tnsnames.ora
+        </label>
+        <label class="mode-toggle__option">
+          <input
+            type="radio"
+            name="connectionSource"
+            value="profile"
+            [ngModel]="connectionSource()"
+            (ngModelChange)="connectionSource.set($event); onConnectionSourceChange()"
+          />
+          Perfil do servidor
+        </label>
+      </div>
+
+      @if (connectionSource() === 'local_tns') {
+        @if (localTns()?.available) {
+          <p class="files-summary">
+            Usando <code>tnsnames.ora</code> da máquina onde a API está rodando:
+            <code>{{ localTns()!.configDir }}</code>
+            — <strong>{{ localTns()!.aliases.length }}</strong> alias(es) encontrado(s).
+          </p>
+        } @else {
+          <div class="alert alert--warning alert--inline">
+            {{
+              localTns()?.message ??
+                'tnsnames.ora local não encontrado. Configure ORACLE_TNS_ADMIN, TNS_ADMIN ou ORACLE_HOME e reinicie a API.'
+            }}
+          </div>
+        }
+      }
+
+      @if (connectionSource() === 'salux_ini') {
+        <div class="files-grid">
+          <div class="file-panel">
+            <h3 class="file-panel__title">Arquivo INI (Salux)</h3>
+            <p class="file-panel__desc">Lista os <code>ServerName</code> da seção <code>[Database]</code>.</p>
+            <label class="btn btn--secondary btn--file">
+              Carregar arquivo INI
+              <input type="file" accept=".ini,.txt" (change)="onIniFileSelected($event)" hidden />
+            </label>
+            @if (iniFileName()) {
+              <p class="file-panel__meta"><strong>Arquivo:</strong> {{ iniFileName() }}</p>
+              @if (saluxIni()?.activeServerName) {
+                <p class="file-panel__meta"><strong>Ativo no INI:</strong> {{ saluxIni()!.activeServerName }}</p>
+              }
+              <p class="file-panel__meta"><strong>Conexões:</strong> {{ iniConnections().length }}</p>
+            }
+          </div>
+
+          <div class="file-panel">
+            <h3 class="file-panel__title">tnsnames.ora</h3>
+            <p class="file-panel__desc">Aliases TNS disponíveis para validar e conectar.</p>
+            <label class="btn btn--secondary btn--file">
+              Carregar tnsnames.ora
+              <input type="file" accept=".ora,.txt" (change)="onTnsFileSelected($event)" hidden />
+            </label>
+            @if (tnsFileName()) {
+              <p class="file-panel__meta"><strong>Arquivo:</strong> {{ tnsFileName() }}</p>
+              <p class="file-panel__meta"><strong>Aliases TNS:</strong> {{ tnsAliases().length }}</p>
+              @if (tnsAliases().length === 0) {
+                <p class="file-panel__meta file-panel__meta--warn">
+                  Nenhum alias reconhecido. Verifique o formato do arquivo.
+                </p>
+              }
+            }
+          </div>
+        </div>
+
+        @if (iniFileName() && tnsFileName()) {
+          <p class="files-summary">
+            <strong>{{ availableConnections().length }}</strong> conexão(ões) encontrada(s) no INI e no tnsnames.
+          </p>
+          @if (missingInTnsNames().length > 0) {
+            <div class="alert alert--warning alert--inline">
+              ServerName do INI sem alias no tnsnames:
+              {{ missingInTnsNames().join(', ') }}
+            </div>
+          }
+        } @else if (!iniFileName() || !tnsFileName()) {
+          <p class="files-summary files-summary--hint">
+            Carregue os dois arquivos: o INI define as conexões Salux e o tnsnames.ora valida os aliases TNS.
+          </p>
+        }
+      }
+
+      <div class="mode-toggle">
+        <label class="mode-toggle__option">
+          <input
+            type="radio"
+            name="compareMode"
+            value="schema"
+            [ngModel]="compareMode()"
+            (ngModelChange)="compareMode.set($event); onModeChange()"
+          />
+          Schema inteiro
+        </label>
+        <label class="mode-toggle__option">
+          <input
+            type="radio"
+            name="compareMode"
+            value="table"
+            [ngModel]="compareMode()"
+            (ngModelChange)="compareMode.set($event); onModeChange()"
+          />
+          Tabela específica
+        </label>
+      </div>
+
+      <div class="compare-grid">
+        <div class="compare-side">
+          <h3 class="compare-side__title">Origem</h3>
+
+          @if (usesTnsAlias()) {
+            <label class="form-label">Alias TNS</label>
+            @if (connectionSource() === 'local_tns') {
+              <input
+                type="text"
+                class="form-input"
+                list="local-tns-aliases-source"
+                placeholder="Ex.: HOSPITAL_PROD"
+                [class.form-input--invalid]="sourceTnsName() && localTns()?.aliases?.length && !isTnsValid(sourceTnsName())"
+                [ngModel]="sourceTnsName()"
+                (ngModelChange)="sourceTnsName.set($event); onSourceTnsChange()"
+              />
+              <datalist id="local-tns-aliases-source">
+                @for (alias of localTns()?.aliases ?? []; track alias) {
+                  <option [value]="alias"></option>
+                }
+              </datalist>
+            } @else {
+            <select
+              class="form-input"
+              [class.form-input--invalid]="sourceTnsName() && tnsAliases().length && !isTnsValid(sourceTnsName())"
+              [ngModel]="sourceTnsName()"
+              (ngModelChange)="sourceTnsName.set($event); onSourceTnsChange()"
+              [disabled]="!availableConnections().length"
+            >
+              <option value="">Selecione...</option>
+              @for (name of availableConnections(); track name) {
+                <option [value]="name">{{ optionLabel(name) }}</option>
+              }
+            </select>
+            }
+            @if (resolveTnsDisplay('source'); as tns) {
+              <p class="connection-info">
+                <span class="connection-info__mode">TNS</span>
+                <span class="connection-info__summary">{{ tns }}</span>
+              </p>
+            }
+            <label class="form-label">Usuário do banco</label>
+            <input
+              type="text"
+              class="form-input"
+              autocomplete="username"
+              placeholder="Ex.: INFOSAUDE"
+              [ngModel]="sourceDbUser()"
+              (ngModelChange)="sourceDbUser.set($event); onSourceCredentialsChange()"
+            />
+            <label class="form-label">Senha do banco</label>
+            <input
+              type="password"
+              class="form-input"
+              autocomplete="current-password"
+              [ngModel]="sourceDbPassword()"
+              (ngModelChange)="sourceDbPassword.set($event); onSourceCredentialsChange()"
+            />
+            <button
+              type="button"
+              class="btn btn--secondary btn--test"
+              [disabled]="!sourceTnsName() || sourceTestState() === 'testing'"
+              (click)="testConnection('source')"
+            >
+              {{ sourceTestState() === 'testing' ? 'Testando...' : 'Testar conexão' }}
+            </button>
+            @if (sourceTestMessage()) {
+              <p
+                class="test-result"
+                [class.test-result--success]="sourceTestState() === 'success'"
+                [class.test-result--error]="sourceTestState() === 'error'"
+              >
+                {{ sourceTestMessage() }}
+              </p>
+            }
+          } @else {
+            <label class="form-label">Conexão</label>
+            <select
+              class="form-input"
+              [ngModel]="sourceProfileId()"
+              (ngModelChange)="sourceProfileId.set($event); onSourceProfileChange()"
+            >
+              @for (profile of profiles(); track profile.id) {
+                <option [value]="profile.id">{{ profile.label }}</option>
+              }
+            </select>
+            @if (sourceProfile(); as profile) {
+              <p class="connection-info">
+                <span class="connection-info__mode">{{ profile.connectionModeLabel }}</span>
+                <span class="connection-info__summary">{{ profile.connectionSummary }}</span>
+              </p>
+            }
+            <button
+              type="button"
+              class="btn btn--secondary btn--test"
+              [disabled]="!sourceProfileId() || sourceTestState() === 'testing'"
+              (click)="testConnection('source')"
+            >
+              {{ sourceTestState() === 'testing' ? 'Testando...' : 'Testar conexão' }}
+            </button>
+            @if (sourceTestMessage()) {
+              <p
+                class="test-result"
+                [class.test-result--success]="sourceTestState() === 'success'"
+                [class.test-result--error]="sourceTestState() === 'error'"
+              >
+                {{ sourceTestMessage() }}
+              </p>
+            }
+          }
+
+          <label class="form-label">Schema</label>
+          <select
+            class="form-input"
+            [ngModel]="sourceSchema()"
+            (ngModelChange)="sourceSchema.set($event); onSourceSchemaChange()"
+            [disabled]="loadingSchemas() || !isConnectionTested('source')"
+          >
+            <option value="">Selecione...</option>
+            @for (schema of sourceSchemas(); track schema) {
+              <option [value]="schema">{{ schema }}</option>
+            }
+          </select>
+
+          @if (compareMode() === 'table') {
+            <label class="form-label">Tabela</label>
+            <select
+              class="form-input"
+              [ngModel]="sourceTable()"
+              (ngModelChange)="sourceTable.set($event)"
+              [disabled]="loadingTables() || !sourceSchema()"
+            >
+              <option value="">Selecione...</option>
+              @for (table of sourceTables(); track table) {
+                <option [value]="table">{{ table }}</option>
+              }
+            </select>
+          }
+        </div>
+
+        <div class="compare-side">
+          <h3 class="compare-side__title">Destino</h3>
+
+          @if (usesTnsAlias()) {
+            <label class="form-label">Alias TNS</label>
+            @if (connectionSource() === 'local_tns') {
+              <input
+                type="text"
+                class="form-input"
+                list="local-tns-aliases-target"
+                placeholder="Ex.: HOSPITAL_HOM"
+                [class.form-input--invalid]="targetTnsName() && localTns()?.aliases?.length && !isTnsValid(targetTnsName())"
+                [ngModel]="targetTnsName()"
+                (ngModelChange)="targetTnsName.set($event); onTargetTnsChange()"
+              />
+              <datalist id="local-tns-aliases-target">
+                @for (alias of localTns()?.aliases ?? []; track alias) {
+                  <option [value]="alias"></option>
+                }
+              </datalist>
+            } @else {
+            <select
+              class="form-input"
+              [class.form-input--invalid]="targetTnsName() && tnsAliases().length && !isTnsValid(targetTnsName())"
+              [ngModel]="targetTnsName()"
+              (ngModelChange)="targetTnsName.set($event); onTargetTnsChange()"
+              [disabled]="!availableConnections().length"
+            >
+              <option value="">Selecione...</option>
+              @for (name of availableConnections(); track name) {
+                <option [value]="name">{{ optionLabel(name) }}</option>
+              }
+            </select>
+            }
+            @if (resolveTnsDisplay('target'); as tns) {
+              <p class="connection-info">
+                <span class="connection-info__mode">TNS</span>
+                <span class="connection-info__summary">{{ tns }}</span>
+              </p>
+            }
+            <label class="form-label">Usuário do banco</label>
+            <input
+              type="text"
+              class="form-input"
+              autocomplete="username"
+              placeholder="Ex.: INFOSAUDE"
+              [ngModel]="targetDbUser()"
+              (ngModelChange)="targetDbUser.set($event); onTargetCredentialsChange()"
+            />
+            <label class="form-label">Senha do banco</label>
+            <input
+              type="password"
+              class="form-input"
+              autocomplete="current-password"
+              [ngModel]="targetDbPassword()"
+              (ngModelChange)="targetDbPassword.set($event); onTargetCredentialsChange()"
+            />
+            <button
+              type="button"
+              class="btn btn--secondary btn--test"
+              [disabled]="!targetTnsName() || targetTestState() === 'testing'"
+              (click)="testConnection('target')"
+            >
+              {{ targetTestState() === 'testing' ? 'Testando...' : 'Testar conexão' }}
+            </button>
+            @if (targetTestMessage()) {
+              <p
+                class="test-result"
+                [class.test-result--success]="targetTestState() === 'success'"
+                [class.test-result--error]="targetTestState() === 'error'"
+              >
+                {{ targetTestMessage() }}
+              </p>
+            }
+          } @else {
+            <label class="form-label">Conexão</label>
+            <select
+              class="form-input"
+              [ngModel]="targetProfileId()"
+              (ngModelChange)="targetProfileId.set($event); onTargetProfileChange()"
+            >
+              @for (profile of profiles(); track profile.id) {
+                <option [value]="profile.id">{{ profile.label }}</option>
+              }
+            </select>
+            @if (targetProfile(); as profile) {
+              <p class="connection-info">
+                <span class="connection-info__mode">{{ profile.connectionModeLabel }}</span>
+                <span class="connection-info__summary">{{ profile.connectionSummary }}</span>
+              </p>
+            }
+            <button
+              type="button"
+              class="btn btn--secondary btn--test"
+              [disabled]="!targetProfileId() || targetTestState() === 'testing'"
+              (click)="testConnection('target')"
+            >
+              {{ targetTestState() === 'testing' ? 'Testando...' : 'Testar conexão' }}
+            </button>
+            @if (targetTestMessage()) {
+              <p
+                class="test-result"
+                [class.test-result--success]="targetTestState() === 'success'"
+                [class.test-result--error]="targetTestState() === 'error'"
+              >
+                {{ targetTestMessage() }}
+              </p>
+            }
+          }
+
+          <label class="form-label">Schema</label>
+          <select
+            class="form-input"
+            [ngModel]="targetSchema()"
+            (ngModelChange)="targetSchema.set($event); onTargetSchemaChange()"
+            [disabled]="loadingSchemas() || !isConnectionTested('target')"
+          >
+            <option value="">Selecione...</option>
+            @for (schema of targetSchemas(); track schema) {
+              <option [value]="schema">{{ schema }}</option>
+            }
+          </select>
+
+          @if (compareMode() === 'table') {
+            <label class="form-label">Tabela</label>
+            <select
+              class="form-input"
+              [ngModel]="targetTable()"
+              (ngModelChange)="targetTable.set($event)"
+              [disabled]="loadingTables() || !targetSchema()"
+            >
+              <option value="">Mesma da origem</option>
+              @for (table of targetTables(); track table) {
+                <option [value]="table">{{ table }}</option>
+              }
+            </select>
+          }
+        </div>
+      </div>
+    </div>
+    <div class="card__footer">
+      <button type="button" class="btn btn--secondary" (click)="clear()">Limpar</button>
+      <button type="button" class="btn btn--primary" [disabled]="loading() || !canCompare()" (click)="compare()">
+        {{ loading() ? 'Comparando...' : 'Comparar' }}
+      </button>
+    </div>
+    <p class="card__footer-note">
+      Nos modos TNS, informe usuário e senha do Oracle em origem e destino.
+      No modo <strong>TNS da máquina</strong>, a conexão usa o <code>tnsnames.ora</code> da máquina onde a API está rodando.
+      <button type="button" class="link-button" (click)="toggleConnectionHelp()">
+        {{ showConnectionHelp() ? 'Ocultar' : 'Ver' }} formas de conexão
+      </button>
+    </p>
+  </section>
+
+  @if (showConnectionHelp()) {
+    <section class="card card--help">
+      <div class="card__header">
+        <h2>Formas de conexão Oracle</h2>
+        <span class="card__hint">Configure no servidor (.env ou docker-compose)</span>
+      </div>
+      <div class="card__body">
+        @for (mode of connectionModes(); track mode.mode) {
+          <div class="help-mode">
+            <h3 class="help-mode__title">{{ mode.label }}</h3>
+            <p class="help-mode__desc">{{ mode.description }}</p>
+            <div class="help-mode__vars">
+              <strong>Oracle Principal:</strong>
+              <ul>
+                @for (variable of mode.examples.primary; track variable) {
+                  <li><code>{{ variable }}</code></li>
+                }
+              </ul>
+              <strong>Oracle Secundário (comparação):</strong>
+              <ul>
+                @for (variable of mode.examples.secondary; track variable) {
+                  <li><code>{{ variable }}</code></li>
+                }
+              </ul>
+            </div>
+          </div>
+        }
+        <p class="help-mode__note">
+          Se <code>ORACLE_CONNECTION_MODE</code> não for informado, o modo é detectado automaticamente
+          pela variável preenchida (<code>CONNECT_STRING</code>, <code>TNS_NAME</code> ou <code>HOST</code>).
+        </p>
+      </div>
+    </section>
+  }
+
+  @if (compareResult(); as result) {
+    @if (isTableResult(result)) {
+      <section class="card">
+        <div class="card__header">
+          <h2>Resultado — {{ result.source.table }}</h2>
+          <span
+            class="badge"
+            [class.badge--success]="result.result.status === 'equal'"
+            [class.badge--warning]="result.result.status === 'different'"
+          >
+            {{ result.result.summary }}
+          </span>
+        </div>
+        <div class="card__body">
+          <p class="result-meta">
+            <strong>Origem:</strong> {{ result.source.schema }}.{{ result.source.table }}
+            &nbsp;|&nbsp;
+            <strong>Destino:</strong> {{ result.target.schema }}.{{ result.target.table }}
+          </p>
+
+          @if (result.result.constraintDiffs.length > 0) {
+            <h3 class="result-section-title">Chave primária</h3>
+            <div class="table-wrap">
+              <table class="diff-table">
+                <thead>
+                  <tr>
+                    <th>Campo</th>
+                    <th>Origem</th>
+                    <th>Destino</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (diff of result.result.constraintDiffs; track diff.field) {
+                    <tr class="diff-table__row--changed">
+                      <td>{{ diff.message }}</td>
+                      <td>{{ diff.sourceValue }}</td>
+                      <td>{{ diff.targetValue }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          @if (result.result.columnDiffs.length === 0 && result.result.constraintDiffs.length === 0) {
+            <p class="empty-state empty-state--success">Estrutura idêntica entre origem e destino.</p>
+          } @else if (result.result.columnDiffs.length > 0) {
+            <h3 class="result-section-title">Colunas</h3>
+            <div class="table-wrap">
+              <table class="diff-table">
+                <thead>
+                  <tr>
+                    <th>Coluna</th>
+                    <th>Status</th>
+                    <th>Origem</th>
+                    <th>Destino</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (diff of result.result.columnDiffs; track diff.column) {
+                    <tr
+                      [class.diff-table__row--added]="diff.status === 'only_target'"
+                      [class.diff-table__row--removed]="diff.status === 'only_source'"
+                      [class.diff-table__row--changed]="diff.status === 'changed'"
+                    >
+                      <td><strong>{{ diff.column }}</strong></td>
+                      <td>
+                        <span class="status-pill" [attr.data-status]="diff.status">{{ diff.message }}</span>
+                      </td>
+                      <td>{{ diff.sourceValue ?? '—' }}</td>
+                      <td>{{ diff.targetValue ?? '—' }}</td>
+                    </tr>
+                    @if (diff.fields?.length) {
+                      @for (field of diff.fields!; track field.field) {
+                        <tr class="diff-table__row--detail">
+                          <td></td>
+                          <td>{{ field.message }}</td>
+                          <td>{{ field.sourceValue }}</td>
+                          <td>{{ field.targetValue }}</td>
+                        </tr>
+                      }
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    @if (isSchemaResult(result)) {
+      <section class="card">
+        <div class="card__header">
+          <h2>Resumo do Schema</h2>
+          <span
+            class="badge"
+            [class.badge--success]="result.result.status === 'equal'"
+            [class.badge--warning]="result.result.status === 'different'"
+          >
+            {{ result.result.summary.totalTables }} tabela(s) analisada(s)
+          </span>
+        </div>
+        <div class="card__body">
+          <div class="summary-cards">
+            <div class="summary-card summary-card--equal">
+              <span class="summary-card__value">{{ result.result.summary.equal }}</span>
+              <span class="summary-card__label">Idênticas</span>
+            </div>
+            <div class="summary-card summary-card--diff">
+              <span class="summary-card__value">{{ result.result.summary.different }}</span>
+              <span class="summary-card__label">Diferentes</span>
+            </div>
+            <div class="summary-card summary-card--source">
+              <span class="summary-card__value">{{ result.result.summary.onlySource }}</span>
+              <span class="summary-card__label">Só na origem</span>
+            </div>
+            <div class="summary-card summary-card--target">
+              <span class="summary-card__value">{{ result.result.summary.onlyTarget }}</span>
+              <span class="summary-card__label">Só no destino</span>
+            </div>
+          </div>
+
+          <p class="result-meta">
+            <strong>Origem:</strong> {{ result.source.schema }} &nbsp;|&nbsp;
+            <strong>Destino:</strong> {{ result.target.schema }}
+          </p>
+
+          @if (result.result.onlySource.length > 0) {
+            <h3 class="result-section-title">Tabelas apenas na origem</h3>
+            <ul class="table-list">
+              @for (item of result.result.onlySource; track item.table) {
+                <li>{{ item.schema }}.{{ item.table }}</li>
+              }
+            </ul>
+          }
+
+          @if (result.result.onlyTarget.length > 0) {
+            <h3 class="result-section-title">Tabelas apenas no destino</h3>
+            <ul class="table-list">
+              @for (item of result.result.onlyTarget; track item.table) {
+                <li>{{ item.schema }}.{{ item.table }}</li>
+              }
+            </ul>
+          }
+
+          @if (result.result.different.length > 0) {
+            <h3 class="result-section-title">Tabelas com diferenças</h3>
+            @for (table of result.result.different; track table.table) {
+              <details class="table-detail">
+                <summary>
+                  <span class="table-detail__name">{{ table.table }}</span>
+                  <span class="badge badge--warning">{{ table.summary }}</span>
+                </summary>
+                <div class="table-detail__body">
+                  @if (table.constraintDiffs.length > 0) {
+                    <p><strong>PK:</strong> origem ({{ table.constraintDiffs[0].sourceValue }}) → destino ({{ table.constraintDiffs[0].targetValue }})</p>
+                  }
+                  <div class="table-wrap">
+                    <table class="diff-table">
+                      <thead>
+                        <tr>
+                          <th>Coluna</th>
+                          <th>Status</th>
+                          <th>Origem</th>
+                          <th>Destino</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (diff of table.columnDiffs; track diff.column) {
+                          <tr
+                            [class.diff-table__row--added]="diff.status === 'only_target'"
+                            [class.diff-table__row--removed]="diff.status === 'only_source'"
+                            [class.diff-table__row--changed]="diff.status === 'changed'"
+                          >
+                            <td><strong>{{ diff.column }}</strong></td>
+                            <td>{{ diff.message }}</td>
+                            <td>{{ diff.sourceValue ?? '—' }}</td>
+                            <td>{{ diff.targetValue ?? '—' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </details>
+            }
+          }
+
+          @if (result.result.status === 'equal') {
+            <p class="empty-state empty-state--success">Todos os schemas comparados possuem estrutura idêntica.</p>
+          }
+        </div>
+      </section>
+    }
+  }
+</div>
