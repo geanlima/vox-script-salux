@@ -22,12 +22,21 @@ if (-not $env:DOCKERHUB_USER) {
 
 $env:IMAGE_TAG = $Tag
 
+function Invoke-Docker {
+    param([Parameter(Mandatory)][string[]]$Args)
+    & docker @Args
+    if ($LASTEXITCODE -ne 0) {
+        throw "Comando falhou (exit $LASTEXITCODE): docker $($Args -join ' ')"
+    }
+}
+
+Write-Host "Conta Docker Hub logada deve ser exatamente: $($env:DOCKERHUB_USER)"
 Write-Host "Build: $($env:DOCKERHUB_USER)/vox-script-salux:$Tag e api..."
-docker compose build --no-cache vox-script-salux
-docker compose build api
+Invoke-Docker compose, build, --no-cache, vox-script-salux
+Invoke-Docker compose, build, api
 
 Write-Host "Push para Docker Hub..."
-docker compose push
+Invoke-Docker compose, push, vox-script-salux, api
 
 Write-Host "Publicado com sucesso. Tag: $Tag"
 Write-Host "No servidor: docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"

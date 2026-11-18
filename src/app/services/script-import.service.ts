@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import {
+  AddColumnEntry,
   createEmptyAddColumn,
   createEmptyColumn,
   createEmptyFormData,
@@ -41,6 +42,7 @@ const FILENAME_TYPE_MAP: Record<string, ScriptType> = {
   procedure: 'PROCEDURE',
   trigger: 'TRIGGER',
   cursor_not_null: 'CURSOR_NOT_NULL',
+  change_column_type: 'CHANGE_COLUMN_TYPE',
   modulo_processo: 'MODULO_PROCESSO',
   insert: 'INSERT',
   update: 'UPDATE'
@@ -200,6 +202,14 @@ export class ScriptImportService {
 
     if (
       /\bDECLARE\b/.test(upper) &&
+      /\bALL_TAB_COLUMNS\b/.test(upper) &&
+      /\bEXECUTE\s+IMMEDIATE\b/.test(upper) &&
+      /\bRENAME\s+COLUMN\b/.test(upper)
+    ) {
+      return 'CHANGE_COLUMN_TYPE';
+    }
+    if (
+      /\bDECLARE\b/.test(upper) &&
       /\bCURSOR\b/.test(upper) &&
       /\bMODIFY\b/.test(upper) &&
       /\bNOT\s+NULL\b/.test(upper)
@@ -280,6 +290,8 @@ export class ScriptImportService {
         return this.parseTrigger(statements[0]?.text ?? '', fullSql);
       case 'CURSOR_NOT_NULL':
         return this.parseCursorNotNull(statements);
+      case 'CHANGE_COLUMN_TYPE':
+        return this.parseChangeColumnType(statements);
       case 'MODULO_PROCESSO':
         return this.parseModuloProcesso(statements);
       case 'INSERT':
@@ -317,20 +329,24 @@ export class ScriptImportService {
     const commentStmt = statements.find((s) => /COMMENT\s+ON\s+COLUMN/i.test(s.text));
     const comment = commentStmt ? this.parseComment(commentStmt.text) : '';
 
+    const addColumns: AddColumnEntry[] = [
+      {
+        ...createEmptyAddColumn(),
+        name: columnName,
+        dataTypeBase: base,
+        dataTypeSize: size,
+        notNull,
+        defaultValue,
+        comment
+      }
+    ];
+
+    this.applyCheckConstraintsToColumns(statements, addColumns);
+
     return {
       fields: {
         tableName,
-        addColumns: [
-          {
-            ...createEmptyAddColumn(),
-            name: columnName,
-            dataTypeBase: base,
-            dataTypeSize: size,
-            notNull,
-            defaultValue,
-            comment
-          }
-        ],
+        addColumns,
         createSequence: statements.some((s) => /CREATE\s+SEQUENCE/i.test(s.text))
       },
       errors: []
@@ -474,23 +490,18 @@ export class ScriptImportService {
 
   private parseCheckConstraint(statements: { text: string }[]): { fields: Partial<ScriptFormData>; errors: string[] } {
     const stmt = statements[0]?.text ?? '';
-    const headerMatch = stmt.match(
-      /ALTER\s+TABLE\s+(?:INFOSAUDE\.)?(\w+)[\s\S]*ADD\s+CONSTRAINT\s+CKC_\w+_(\d+)\s+CHECK\s*\(/is
-    );
-    if (!headerMatch) {
-      return { fields: {}, errors: ['Não foi possível interpretar o Check Constraint.'] };
-    }
+    const tableMatch = stmt.match(/ALTER\s+TABLE\s+(?:INFOSAUDE\.)?(\w+)/i);
+    const checkDetails = this.parseCheckConstraintDetails(stmt);
 
-    const expression = this.extractCheckExpression(stmt);
-    if (!expression) {
-      return { fields: {}, errors: ['Expressão CHECK não encontrada.'] };
+    if (!tableMatch || !checkDetails) {
+      return { fields: {}, errors: ['Não foi possível interpretar o Check Constraint.'] };
     }
 
     return {
       fields: {
-        tableName: headerMatch[1],
-        ckcSequence: Number.parseInt(headerMatch[2], 10) || 1,
-        ckcExpression: expression
+        tableName: tableMatch[1],
+        ckcSequence: checkDetails.sequence,
+        ckcExpression: checkDetails.expression
       },
       errors: []
     };
@@ -633,6 +644,72 @@ export class ScriptImportService {
     };
   }
 
+  private parseChangeColumnType(statements: { text: string }[]): { fields: Partial<ScriptFormData>; errors: string[] } {
+    const declareStmt = statements.find(
+      (s) => /\bDECLARE\b/i.test(s.text) && /\bALL_TAB_COLUMNS\b/i.test(s.text)
+    );
+
+    if (!declareStmt) {
+      return { fields: {}, errors: ['Estrutura do script Alterar Tipo/Precisão incompleta.'] };
+    }
+
+    const text = declareStmt.text;
+    const tableMatch = text.match(/TABLE_NAME\s*=\s*'([^']+)'/i);
+    const columnMatch = text.match(/COLUMN_NAME\s*=\s*'([^']+)'/i);
+    const dataTypeMatch = text.match(/DATA_TYPE\s*=\s*'([^']+)'/i);
+    const precisionMatch = text.match(/DATA_PRECISION\s*=\s*(\d+)/i);
+    const scaleMatch = text.match(/NVL\(DATA_SCALE,\s*0\)\s*=\s*(\d+)/i);
+    const charLengthMatch = text.match(/CHAR_LENGTH\s*=\s*(\d+)/i);
+
+    const addMatch = text.match(
+      /EXECUTE\s+IMMEDIATE\s+'ALTER\s+TABLE\s+(?:INFOSAUDE\.)?\w+\s+ADD\s+(\w+)_OLD\s+((?:VARCHAR2|CHAR|NUMBER|DATE|TIMESTAMP|CLOB|BLOB)(?:\([^)]*\))?)/is
+    );
+    const commentMatch = text.match(
+      /EXECUTE\s+IMMEDIATE\s+'COMMENT\s+ON\s+COLUMN\s+(?:INFOSAUDE\.)?\w+\.\w+\s+IS\s+''((?:[^']|'')*)''/i
+    );
+
+    if (!tableMatch || !columnMatch) {
+      return { fields: {}, errors: ['Não foi possível interpretar tabela e coluna do bloco PL/SQL.'] };
+    }
+
+    const oldBase = dataTypeMatch?.[1]?.toUpperCase() ?? 'NUMBER';
+    let oldSize = '';
+    if (oldBase === 'NUMBER' && precisionMatch) {
+      const scale = scaleMatch?.[1];
+      oldSize = scale ? `${precisionMatch[1]},${scale}` : precisionMatch[1];
+    } else if ((oldBase === 'VARCHAR2' || oldBase === 'CHAR') && charLengthMatch) {
+      oldSize = charLengthMatch[1];
+    }
+
+    if (!addMatch) {
+      return { fields: {}, errors: ['Não foi possível interpretar o novo tipo de dados no EXECUTE IMMEDIATE ADD.'] };
+    }
+
+    const [, columnFromAdd, newDataTypeRaw] = addMatch;
+    const columnName = columnMatch[1].toUpperCase();
+    if (columnFromAdd.toUpperCase() !== columnName) {
+      return {
+        fields: {},
+        errors: ['O nome da coluna no ADD temporário não corresponde ao COLUMN_NAME do bloco.']
+      };
+    }
+
+    const { base: newBase, size: newSize } = this.parseOracleDataType(newDataTypeRaw);
+
+    return {
+      fields: {
+        tableName: tableMatch[1],
+        columnName,
+        oldDataTypeBase: oldBase,
+        oldDataTypeSize: oldSize,
+        dataTypeBase: newBase,
+        dataTypeSize: newSize,
+        comment: commentMatch ? this.unescapeSqlString(commentMatch[1]) : ''
+      },
+      errors: []
+    };
+  }
+
   private parseOracleDataType(dataType: string): { base: string; size: string } {
     const match = dataType.trim().toUpperCase().match(/^(\w+)(?:\(([^)]+)\))?$/);
     if (!match) {
@@ -659,6 +736,64 @@ export class ScriptImportService {
       return trimmed;
     }
     return trimmed;
+  }
+
+  private applyCheckConstraintsToColumns(
+    statements: { text: string }[],
+    columns: AddColumnEntry[]
+  ): void {
+    const checkStatements = statements.filter(
+      (s) => /ADD\s+CONSTRAINT\s+CKC_/i.test(s.text) && /\bCHECK\s*\(/i.test(s.text)
+    );
+
+    for (const checkStmt of checkStatements) {
+      const details = this.parseCheckConstraintDetails(checkStmt.text);
+      if (!details) {
+        continue;
+      }
+
+      const target = this.findCheckTargetColumn(details.expression, columns);
+      if (!target) {
+        continue;
+      }
+
+      target.constraintType = 'CHECK';
+      target.ckcSequence = details.sequence;
+      target.ckcExpression = details.expression;
+    }
+  }
+
+  private parseCheckConstraintDetails(stmt: string): { sequence: number; expression: string } | null {
+    if (!/ADD\s+CONSTRAINT\s+CKC_/i.test(stmt)) {
+      return null;
+    }
+
+    const expression = this.extractCheckExpression(stmt);
+    if (!expression) {
+      return null;
+    }
+
+    const nameMatch = stmt.match(/ADD\s+CONSTRAINT\s+(CKC_\w+)/i);
+    const sequenceMatch = nameMatch?.[1]?.match(/_(\d+)$/);
+    const sequence = sequenceMatch ? Number.parseInt(sequenceMatch[1], 10) || 1 : 1;
+
+    return { sequence, expression };
+  }
+
+  private findCheckTargetColumn(expression: string, columns: AddColumnEntry[]): AddColumnEntry | null {
+    const namedMatch = columns.find((col) => {
+      const name = col.name.trim();
+      if (!name) {
+        return false;
+      }
+      return new RegExp(`\\b${name}\\b`, 'i').test(expression);
+    });
+    if (namedMatch) {
+      return namedMatch;
+    }
+
+    const eligible = columns.filter((col) => col.name.trim() && col.constraintType !== 'CHECK');
+    return eligible.length === 1 ? eligible[0] : null;
   }
 
   private extractCheckExpression(stmt: string): string {
@@ -716,6 +851,7 @@ export class ScriptImportService {
       PROCEDURE: 'Procedure',
       TRIGGER: 'Trigger',
       CURSOR_NOT_NULL: 'Cursor (NOT NULL)',
+      CHANGE_COLUMN_TYPE: 'Alterar Tipo/Precisão',
       MODULO_PROCESSO: 'Módulo Processo',
       INSERT: 'Insert (avulso)',
       UPDATE: 'Update (avulso)'

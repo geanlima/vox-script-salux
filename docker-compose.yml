@@ -17,15 +17,19 @@ services:
     image: ${DOCKERHUB_USER}/vox-script-salux-api:${IMAGE_TAG:-latest}
     build: ./server
     environment:
+      SQLITE_DB_PATH: /data/vox-script-salux.sqlite
       ORACLE_USER: ${ORACLE_USER:-validator}
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
-      ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-oracle:1521/XEPDB1}
+      ORACLE_CONNECTION_MODE: connect_string
+      ORACLE_CONNECT_STRING: oracle:1521/XEPDB1
       AUTH_SECRET: ${AUTH_SECRET:-}
       MASTER_USERNAME: ${MASTER_USERNAME:-master}
       MASTER_PASSWORD: ${MASTER_PASSWORD:-master@123}
     depends_on:
       oracle:
         condition: service_healthy
+    volumes:
+      - vox-script-salux-data:/data
     ports:
       - "${API_PORT:-3000}:3000"
     restart: unless-stopped
@@ -40,6 +44,8 @@ services:
       - oracle-validator-data:/opt/oracle/oradata
     expose:
       - "1521"
+    ports:
+      - "${ORACLE_PORT:-1521}:1521"
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
       interval: 15s
@@ -51,3 +57,4 @@ services:
 
 volumes:
   oracle-validator-data:
+  vox-script-salux-data:

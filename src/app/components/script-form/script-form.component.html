@@ -166,7 +166,8 @@
           <h3 class="form-section__title">Dados do Objeto</h3>
 
         @if (!['FUNCTION', 'PROCEDURE', 'MODULO_PROCESSO', 'INSERT', 'UPDATE'].includes(currentScriptType())) {
-        @if (currentScriptType() === 'CURSOR_NOT_NULL') {
+        @if (['CURSOR_NOT_NULL', 'CHANGE_COLUMN_TYPE'].includes(currentScriptType())) {
+          @if (currentScriptType() === 'CURSOR_NOT_NULL') {
           <div class="form-grid form-grid--type">
             <div class="form-row">
               <label class="form-label" for="dataTypeBase">Tipo *</label>
@@ -197,6 +198,7 @@
               </div>
             }
           </div>
+          }
 
           <div class="form-grid form-grid--2">
               <div class="form-row">
@@ -237,6 +239,90 @@
               <span class="form-hint">Schema INFOSAUDE será aplicado automaticamente. Máx. 30 caracteres.</span>
             </div>
           }
+        }
+
+        @if (currentScriptType() === 'CHANGE_COLUMN_TYPE') {
+          <p class="form-hint">
+            Gera um bloco PL/SQL que verifica o tipo atual em <code>ALL_TAB_COLUMNS</code> e, se corresponder,
+            cria coluna temporária <code>{{ form().columnName.trim() ? form().columnName.trim().toUpperCase() + '_OLD' : 'CAMPO_OLD' }}</code>,
+            copia os dados, remove a coluna original e renomeia.
+          </p>
+
+          <h4 class="form-subsection__title">Tipo atual (condição)</h4>
+          <div class="form-grid form-grid--type">
+            <div class="form-row">
+              <label class="form-label" for="oldDataTypeBase">Tipo atual *</label>
+              <select
+                id="oldDataTypeBase"
+                class="form-input"
+                [ngModel]="form().oldDataTypeBase"
+                (ngModelChange)="updateField('oldDataTypeBase', $event)"
+              >
+                @for (type of baseTypes; track type) {
+                  <option [value]="type">{{ type }}</option>
+                }
+              </select>
+            </div>
+            @if (requiresSize(form().oldDataTypeBase)) {
+              <div class="form-row">
+                <label class="form-label" for="oldDataTypeSize">
+                  Precisão/tamanho atual@if (sizeIsRequired(form().oldDataTypeBase)) { *}
+                </label>
+                <input
+                  id="oldDataTypeSize"
+                  class="form-input"
+                  type="text"
+                  [placeholder]="form().oldDataTypeBase === 'NUMBER' ? 'Ex: 10' : 'Ex: 50'"
+                  [ngModel]="form().oldDataTypeSize"
+                  (ngModelChange)="updateField('oldDataTypeSize', $event)"
+                />
+              </div>
+            }
+          </div>
+
+          <h4 class="form-subsection__title">Novo tipo</h4>
+          <div class="form-grid form-grid--type">
+            <div class="form-row">
+              <label class="form-label" for="dataTypeBase">Novo tipo *</label>
+              <select
+                id="dataTypeBase"
+                class="form-input"
+                [ngModel]="form().dataTypeBase"
+                (ngModelChange)="updateField('dataTypeBase', $event)"
+              >
+                @for (type of baseTypes; track type) {
+                  <option [value]="type">{{ type }}</option>
+                }
+              </select>
+            </div>
+            @if (requiresSize(form().dataTypeBase)) {
+              <div class="form-row">
+                <label class="form-label" for="dataTypeSize">
+                  Nova precisão/tamanho@if (sizeIsRequired(form().dataTypeBase)) { *}
+                </label>
+                <input
+                  id="dataTypeSize"
+                  class="form-input"
+                  type="text"
+                  [placeholder]="form().dataTypeBase === 'NUMBER' ? 'Ex: 5,0 ou 10,2' : 'Ex: 50'"
+                  [ngModel]="form().dataTypeSize"
+                  (ngModelChange)="updateField('dataTypeSize', $event)"
+                />
+              </div>
+            }
+          </div>
+
+          <div class="form-row">
+            <label class="form-label" for="comment">Comentário do Campo *</label>
+            <textarea
+              id="comment"
+              class="form-input form-textarea"
+              rows="3"
+              placeholder="Ex: Pressao maxima ou sistolica."
+              [ngModel]="form().comment"
+              (ngModelChange)="updateField('comment', $event)"
+            ></textarea>
+          </div>
         }
 
         @if (currentScriptType() === 'ADD_COLUMN') {

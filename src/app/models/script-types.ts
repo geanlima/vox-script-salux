@@ -10,6 +10,7 @@ export type ScriptType =
   | 'PROCEDURE'
   | 'TRIGGER'
   | 'CURSOR_NOT_NULL'
+  | 'CHANGE_COLUMN_TYPE'
   | 'MODULO_PROCESSO'
   | 'INSERT'
   | 'UPDATE';
@@ -75,6 +76,11 @@ export const SCRIPT_TYPE_OPTIONS: ScriptTypeOption[] = [
     value: 'CURSOR_NOT_NULL',
     label: 'Cursor (NOT NULL)',
     description: 'Script completo para coluna NOT NULL em tabela existente'
+  },
+  {
+    value: 'CHANGE_COLUMN_TYPE',
+    label: 'Alterar Tipo/Precisão',
+    description: 'Bloco PL/SQL para alterar tipo ou precisão de coluna existente (ADD temporária, cópia, DROP e RENAME)'
   },
   {
     value: 'MODULO_PROCESSO',

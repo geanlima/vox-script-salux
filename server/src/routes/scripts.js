@@ -8,10 +8,9 @@ import {
   isScriptStorageConfigured,
   isScriptStorageReady,
   listScripts,
-  updateScript,
-  waitForOraclePool
-} from '../db/oracle-scripts.js';
-import { initUserSchema } from '../db/oracle-users.js';
+  updateScript
+} from '../db/sqlite-scripts.js';
+import { initUserSchema } from '../db/sqlite-users.js';
 
 const router = Router();
 
@@ -48,21 +47,19 @@ function validateScriptPayload(body) {
 }
 
 async function ensureStorageReady(_req, res, next) {
-  if (!isScriptStorageConfigured()) {
-    return res.status(503).json({
-      message:
-        'Armazenamento indisponível. Configure ORACLE_USER, ORACLE_PASSWORD e ORACLE_CONNECT_STRING.'
-    });
-  }
-
   try {
-    await waitForOraclePool();
     await initUserSchema();
     await initScriptStorageSchema();
-    next();
+    if (!(await isScriptStorageReady())) {
+      return res.status(503).json({
+        message: 'Armazenamento local indisponível.'
+      });
+    }
+
+    return next();
   } catch (error) {
     return res.status(503).json({
-      message: error?.message ?? 'Oracle indisponível para armazenamento.'
+      message: error?.message ?? 'Armazenamento local indisponível.'
     });
   }
 }

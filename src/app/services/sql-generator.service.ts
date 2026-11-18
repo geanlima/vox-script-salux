@@ -78,6 +78,9 @@ export class SqlGeneratorService {
       case 'CURSOR_NOT_NULL':
         commands = this.buildCursorNotNull(form, table, column);
         break;
+      case 'CHANGE_COLUMN_TYPE':
+        commands = this.buildChangeColumnType(form, table, column);
+        break;
       case 'MODULO_PROCESSO':
         commands = this.buildModuloProcesso(form);
         break;
@@ -147,6 +150,8 @@ export class SqlGeneratorService {
         return [`DROP TRIGGER ${SCHEMA}.${this.normalize(form.objectName)}`];
       case 'CURSOR_NOT_NULL':
         return [`ALTER TABLE ${SCHEMA}.${table} DROP COLUMN ${column}`];
+      case 'CHANGE_COLUMN_TYPE':
+        return this.buildChangeColumnTypeRollback(form, table, column);
       case 'MODULO_PROCESSO':
         return this.buildModuloProcessoRollback(form);
       case 'INSERT':
@@ -266,6 +271,39 @@ export class SqlGeneratorService {
       }
       this.validateObjectName(form.columnName, 'columnName', 'Campo', errors);
       this.validateDataType(form.dataTypeBase, form.dataTypeSize, 'dataTypeBase', 'dataTypeSize', 'Campo', errors);
+      if (!form.comment.trim()) {
+        errors.push({ field: 'comment', message: 'Informe o comentário do campo.' });
+      }
+    }
+
+    if (form.scriptType === 'CHANGE_COLUMN_TYPE') {
+      if (!form.columnName.trim()) {
+        errors.push({ field: 'columnName', message: 'Informe o nome do campo.' });
+      }
+      this.validateObjectName(form.columnName, 'columnName', 'Campo', errors);
+      this.validateDataType(
+        form.oldDataTypeBase,
+        form.oldDataTypeSize,
+        'oldDataTypeBase',
+        'oldDataTypeSize',
+        'Tipo atual',
+        errors
+      );
+      this.validateDataType(
+        form.dataTypeBase,
+        form.dataTypeSize,
+        'dataTypeBase',
+        'dataTypeSize',
+        'Novo tipo',
+        errors
+      );
+      const tempColumn = `${this.normalize(form.columnName)}_OLD`;
+      if (tempColumn.length > MAX_OBJECT_NAME_LENGTH) {
+        errors.push({
+          field: 'columnName',
+          message: `Nome temporário ${tempColumn} ultrapassa ${MAX_OBJECT_NAME_LENGTH} caracteres. Use um nome de campo mais curto.`
+        });
+      }
       if (!form.comment.trim()) {
         errors.push({ field: 'comment', message: 'Informe o comentário do campo.' });
       }
@@ -794,6 +832,68 @@ export class SqlGeneratorService {
     );
 
     return commands;
+  }
+
+  private buildChangeColumnType(form: ScriptFormData, table: string, column: string): string[] {
+    const tempColumn = `${column}_OLD`;
+    const newDataType = this.resolveDataType(form.dataTypeBase, form.dataTypeSize);
+    const oldBase = form.oldDataTypeBase.trim().toUpperCase();
+    const oldSize = form.oldDataTypeSize.trim();
+    const metadataConditions = this.buildOldTypeMetadataConditions(oldBase, oldSize);
+    const escapedComment = this.escapeComment(form.comment);
+
+    const block =
+      `DECLARE\n` +
+      `    V_TOTAL NUMBER;\n` +
+      `BEGIN\n` +
+      `    V_TOTAL := NULL;\n` +
+      `    SELECT COUNT(*) INTO V_TOTAL\n` +
+      `      FROM ALL_TAB_COLUMNS\n` +
+      `     WHERE TABLE_NAME = '${table}'\n` +
+      `       AND OWNER = '${SCHEMA}'\n` +
+      `       AND COLUMN_NAME = '${column}'\n` +
+      metadataConditions.map((line) => `       ${line}`).join('\n') +
+      `;\n` +
+      `    IF V_TOTAL > 0 THEN\n` +
+      `        EXECUTE IMMEDIATE 'ALTER TABLE ${SCHEMA}.${table} ADD ${tempColumn} ${newDataType} NULL';\n` +
+      `        EXECUTE IMMEDIATE 'COMMENT ON COLUMN ${SCHEMA}.${table}.${tempColumn} IS ''${escapedComment}''';` +
+      `        EXECUTE IMMEDIATE 'UPDATE ${SCHEMA}.${table} SET ${tempColumn} = ${column}';\n` +
+      `        EXECUTE IMMEDIATE 'ALTER TABLE ${SCHEMA}.${table} DROP COLUMN ${column}';\n` +
+      `        EXECUTE IMMEDIATE 'ALTER TABLE ${SCHEMA}.${table} RENAME COLUMN ${tempColumn} TO ${column}';\n` +
+      `    END IF;\n` +
+      `END`;
+
+    return [block];
+  }
+
+  private buildChangeColumnTypeRollback(form: ScriptFormData, table: string, column: string): string[] {
+    const rollbackForm: ScriptFormData = {
+      ...form,
+      dataTypeBase: form.oldDataTypeBase,
+      dataTypeSize: form.oldDataTypeSize,
+      oldDataTypeBase: form.dataTypeBase,
+      oldDataTypeSize: form.dataTypeSize
+    };
+    return this.buildChangeColumnType(rollbackForm, table, column);
+  }
+
+  private buildOldTypeMetadataConditions(baseType: string, size: string): string[] {
+    const base = baseType.trim().toUpperCase();
+    const conditions = [`AND DATA_TYPE = '${base}'`];
+
+    if (base === 'NUMBER' && size.trim()) {
+      const [precision, scale] = size.split(',').map((part) => part.trim());
+      if (precision) {
+        conditions.push(`AND DATA_PRECISION = ${precision}`);
+      }
+      if (scale) {
+        conditions.push(`AND NVL(DATA_SCALE, 0) = ${scale}`);
+      }
+    } else if ((base === 'VARCHAR2' || base === 'CHAR') && size.trim()) {
+      conditions.push(`AND CHAR_LENGTH = ${size.trim()}`);
+    }
+
+    return conditions;
   }
 
   private buildModuloProcesso(form: ScriptFormData): string[] {

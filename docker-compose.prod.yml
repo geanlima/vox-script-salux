@@ -22,35 +22,17 @@ services:
   api:
     image: ${DOCKERHUB_USER}/vox-script-salux-api:${IMAGE_TAG:-latest}
     environment:
-      ORACLE_USER: ${ORACLE_USER:-validator}
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
-      ORACLE_CONNECT_STRING: ${ORACLE_CONNECT_STRING:-oracle:1521/XEPDB1}
-      AUTH_SECRET: ${AUTH_SECRET:-}
+      SQLITE_DB_PATH: /data/vox-script-salux.sqlite
+      ORACLE_USER: ${ORACLE_EXTERNAL_USER:-}
+      ORACLE_PASSWORD: ${ORACLE_EXTERNAL_PASSWORD:-}
+      ORACLE_CONNECTION_MODE: ${ORACLE_EXTERNAL_CONNECTION_MODE:-}
+      ORACLE_CONNECT_STRING: ${ORACLE_EXTERNAL_CONNECT_STRING:-}
+      AUTH_SECRET: ${AUTH_SECRET:?Defina AUTH_SECRET no arquivo .env}
       MASTER_USERNAME: ${MASTER_USERNAME:-master}
-      MASTER_PASSWORD: ${MASTER_PASSWORD:-master@123}
-    depends_on:
-      oracle:
-        condition: service_healthy
-    restart: unless-stopped
-
-  oracle:
-    image: gvenzl/oracle-xe:21-slim-faststart
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-ValidatorAdmin1}
-      APP_USER: ${ORACLE_USER:-validator}
-      APP_USER_PASSWORD: ${ORACLE_PASSWORD:-ValidatorPass1}
+      MASTER_PASSWORD: ${MASTER_PASSWORD:?Defina MASTER_PASSWORD no arquivo .env}
     volumes:
-      - oracle-validator-data:/opt/oracle/oradata
-    expose:
-      - "1521"
-    healthcheck:
-      test: ["CMD", "healthcheck.sh"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
-    shm_size: "1gb"
+      - vox-script-salux-data:/data
     restart: unless-stopped
 
 volumes:
-  oracle-validator-data:
+  vox-script-salux-data:

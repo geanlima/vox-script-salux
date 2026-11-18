@@ -34,6 +34,8 @@ export interface ScriptFormData {
   columnName: string;
   dataTypeBase: string;
   dataTypeSize: string;
+  oldDataTypeBase: string;
+  oldDataTypeSize: string;
   notNull: boolean;
   defaultValue: string;
   comment: string;
@@ -103,6 +105,8 @@ export function createEmptyFormData(): ScriptFormData {
     columnName: '',
     dataTypeBase: 'VARCHAR2',
     dataTypeSize: '50',
+    oldDataTypeBase: 'NUMBER',
+    oldDataTypeSize: '10',
     notNull: false,
     defaultValue: '',
     comment: '',

@@ -1,4 +1,5 @@
 import oracledb from 'oracledb';
+import { resolveOracleConnection } from './connections/oracle-connect-string.js';
 import {
   getOracleErrorSummary,
   isIgnorableSemanticError
@@ -8,15 +9,14 @@ import { splitOracleScript } from './script-splitter.js';
 let pool = null;
 
 export function isOracleConfigured() {
-  return Boolean(
-    process.env.ORACLE_USER &&
-      process.env.ORACLE_PASSWORD &&
-      process.env.ORACLE_CONNECT_STRING
-  );
+  const resolved = resolveOracleConnection('ORACLE');
+  return resolved.valid;
 }
 
 export async function initOraclePool() {
-  if (!isOracleConfigured()) {
+  const resolved = resolveOracleConnection('ORACLE');
+
+  if (!resolved.valid) {
     return false;
   }
 
@@ -24,13 +24,20 @@ export async function initOraclePool() {
     return true;
   }
 
-  pool = await oracledb.createPool({
-    user: process.env.ORACLE_USER,
-    password: process.env.ORACLE_PASSWORD,
-    connectString: process.env.ORACLE_CONNECT_STRING,
+  const poolConfig = {
+    user: resolved.user,
+    password: resolved.password,
+    connectString: resolved.connectString,
     poolMin: 0,
-    poolMax: 4
-  });
+    poolMax: 4,
+    connectTimeout: 5
+  };
+
+  if (resolved.configDir) {
+    poolConfig.configDir = resolved.configDir;
+  }
+
+  pool = await oracledb.createPool(poolConfig);
 
   return true;
 }

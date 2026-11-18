@@ -1,7 +1,8 @@
+import './load-env.js';
 import cors from 'cors';
 import express from 'express';
-import { initScriptStorageSchema, isScriptStorageReady } from './db/oracle-scripts.js';
-import { initUserSchema } from './db/oracle-users.js';
+import { initScriptStorageSchema, isScriptStorageReady } from './db/sqlite-scripts.js';
+import { initUserSchema } from './db/sqlite-users.js';
 import {
   closeOraclePool,
   isOracleConfigured,
@@ -9,7 +10,9 @@ import {
   prevalidateScript,
   waitForOraclePool
 } from './oracle-validator.js';
+import { closeAllPools } from './connections/oracle-pools.js';
 import authRouter from './routes/auth.js';
+import compareRouter from './routes/compare.js';
 import scriptsRouter from './routes/scripts.js';
 
 const app = express();
@@ -21,21 +24,24 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', async (_req, res) => {
   const oracleConfigured = isOracleConfigured();
   const oracleAvailable = oracleConfigured ? await isOracleReady() : false;
+  const storageAvailable = await isScriptStorageReady();
 
   res.json({
     available: oracleAvailable,
     configured: oracleConfigured,
     service: 'vox-script-salux-api',
-    mode: oracleAvailable ? 'oracle-container' : oracleConfigured ? 'oracle-unavailable' : 'not-configured',
+    mode: oracleAvailable ? 'oracle-validation' : 'sqlite-storage',
     storage: {
-      configured: oracleConfigured,
-      available: oracleConfigured ? await isScriptStorageReady() : false
-    }
+      configured: true,
+      available: storageAvailable
+    },
+    oracle: { configured: oracleConfigured, available: oracleAvailable }
   });
 });
 
 app.use('/api/auth', authRouter);
 app.use('/api/scripts', scriptsRouter);
+app.use('/api/compare', compareRouter);
 
 app.post('/api/prevalidate', async (req, res) => {
   const sql = req.body?.sql ?? '';
@@ -61,7 +67,7 @@ app.post('/api/prevalidate', async (req, res) => {
         {
           linha: 0,
           descricao:
-            'Configure ORACLE_USER, ORACLE_PASSWORD e ORACLE_CONNECT_STRING para pré-validação Oracle.'
+            'Configure ORACLE_USER, ORACLE_PASSWORD e a conexão (CONNECT_STRING, TNS ou Easy Connect) para pré-validação Oracle.'
         }
       ],
       oracleAvailable: false
@@ -92,16 +98,22 @@ app.post('/api/prevalidate', async (req, res) => {
 const server = app.listen(port, async () => {
   console.log(`API ouvindo na porta ${port}`);
 
+  try {
+    await initUserSchema();
+    await initScriptStorageSchema();
+    console.log('SQLite inicializado (autenticação + armazenamento de scripts).');
+  } catch (error) {
+    console.error('Falha ao inicializar SQLite:', error.message);
+  }
+
   if (!isOracleConfigured()) {
-    console.log('Oracle não configurado. Pré-validação e CRUD de scripts indisponíveis.');
+    console.log('Oracle não configurado. Pré-validação Oracle indisponível; validação estática segue disponível no frontend.');
     return;
   }
 
   try {
     await waitForOraclePool();
-    await initUserSchema();
-    await initScriptStorageSchema();
-    console.log('Pool Oracle inicializado (validação + usuários + armazenamento de scripts).');
+    console.log('Pool Oracle inicializado para pré-validação.');
   } catch (error) {
     console.error('Falha ao inicializar Oracle:', error.message);
   }
@@ -109,6 +121,7 @@ const server = app.listen(port, async () => {
 
 process.on('SIGTERM', async () => {
   server.close(async () => {
+    await closeAllPools();
     await closeOraclePool();
     process.exit(0);
   });
